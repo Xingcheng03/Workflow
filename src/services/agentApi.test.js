@@ -135,19 +135,22 @@ describe('summarizeContext', () => {
     expect(summarizeContext({})).toBeNull();
   });
 
-  it('whitelists company fields', () => {
+  it('whitelists company fields under data', () => {
     const out = summarizeContext({
-      company: { symbol: 'NVDA', name: 'NVIDIA', sector: 'Tech', recommendation: 'Buy', thesis: 'leak' }
+      data: {
+        company: { symbol: 'NVDA', name: 'NVIDIA', sector: 'Tech', recommendation: 'Buy', thesis: 'leak' }
+      }
     });
     expect(out.company).toEqual({ symbol: 'NVDA', name: 'NVIDIA', sector: 'Tech' });
   });
 
   it('strips noise fields like marketMeta and rawText', () => {
     const out = summarizeContext({
-      company: { symbol: 'NVDA', name: 'NVIDIA', sector: 'Tech' },
-      marketMeta: { source: 'Yahoo' },
-      rawText: 'long Gemini text...',
-      sources: [{ uri: 'x' }]
+      data: {
+        company: { symbol: 'NVDA', name: 'NVIDIA', sector: 'Tech' },
+        marketMeta: { source: 'Yahoo' }
+      },
+      news: { news: ['a'], sentimentScore: 70, sources: [{ uri: 'x' }], rawText: 'leak' }
     });
     expect(out.marketMeta).toBeUndefined();
     expect(out.rawText).toBeUndefined();
@@ -155,17 +158,19 @@ describe('summarizeContext', () => {
   });
 
   it('keeps news headlines and sentiment together', () => {
-    const out = summarizeContext({ news: ['a', 'b'], sentimentScore: 70 });
+    const out = summarizeContext({ news: { news: ['a', 'b'], sentimentScore: 70 } });
     expect(out.news).toEqual(['a', 'b']);
     expect(out.sentimentScore).toBe(70);
   });
 
   it('groups analysis fields under summary.analysis', () => {
     const out = summarizeContext({
-      valuation: 'high',
-      growthView: 'strong',
-      marginView: 'healthy',
-      analysisSummary: 'overall positive'
+      analysis: {
+        valuation: 'high',
+        growthView: 'strong',
+        marginView: 'healthy',
+        analysisSummary: 'overall positive'
+      }
     });
     expect(out.analysis).toEqual({
       valuation: 'high',
@@ -177,9 +182,11 @@ describe('summarizeContext', () => {
 
   it('groups risk fields under summary.risk', () => {
     const out = summarizeContext({
-      riskLevel: 'Moderate',
-      risks: ['r1'],
-      opportunities: ['o1']
+      risk: {
+        riskLevel: 'Moderate',
+        risks: ['r1'],
+        opportunities: ['o1']
+      }
     });
     expect(out.risk).toEqual({ level: 'Moderate', risks: ['r1'], opportunities: ['o1'] });
   });

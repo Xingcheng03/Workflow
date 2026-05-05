@@ -236,16 +236,14 @@ const plainTextPayload = (agentId, symbol, text) => {
   }
 
   return {
-    report: {
-      title: `${symbol} Gemini Investment Brief`,
-      recommendation: 'Not rated',
-      thesis: text.slice(0, 500),
-      bullets: text
-        .split(/\n+/)
-        .map((line) => line.replace(/^[-*\d.\s]+/, '').trim())
-        .filter(Boolean)
-        .slice(0, 4)
-    }
+    title: `${symbol} Gemini Investment Brief`,
+    recommendation: 'Not rated',
+    thesis: text.slice(0, 500),
+    bullets: text
+      .split(/\n+/)
+      .map((line) => line.replace(/^[-*\d.\s]+/, '').trim())
+      .filter(Boolean)
+      .slice(0, 4)
   };
 };
 
@@ -254,40 +252,40 @@ export const summarizeContext = (context) => {
   if (!context) return null;
   const summary = {};
 
-  if (context.company) {
+  if (context.data?.company) {
     summary.company = {
-      symbol: context.company.symbol,
-      name: context.company.name,
-      sector: context.company.sector
+      symbol: context.data.company.symbol,
+      name: context.data.company.name,
+      sector: context.data.company.sector
     };
   }
-  if (context.metrics) {
+  if (context.data?.metrics) {
     summary.metrics = {
-      price: context.metrics.price,
-      change: context.metrics.change,
-      peRatio: context.metrics.peRatio
+      price: context.data.metrics.price,
+      change: context.data.metrics.change,
+      peRatio: context.data.metrics.peRatio
     };
   }
-  if (Array.isArray(context.trend)) {
-    summary.trend = context.trend;
+  if (Array.isArray(context.data?.trend)) {
+    summary.trend = context.data.trend;
   }
-  if (Array.isArray(context.news)) {
-    summary.news = context.news;
-    summary.sentimentScore = context.sentimentScore;
+  if (Array.isArray(context.news?.news)) {
+    summary.news = context.news.news;
+    summary.sentimentScore = context.news.sentimentScore;
   }
-  if (context.valuation || context.analysisSummary) {
+  if (context.analysis?.valuation || context.analysis?.analysisSummary) {
     summary.analysis = {
-      valuation: context.valuation,
-      growthView: context.growthView,
-      marginView: context.marginView,
-      summary: context.analysisSummary
+      valuation: context.analysis.valuation,
+      growthView: context.analysis.growthView,
+      marginView: context.analysis.marginView,
+      summary: context.analysis.analysisSummary
     };
   }
-  if (context.riskLevel) {
+  if (context.risk?.riskLevel) {
     summary.risk = {
-      level: context.riskLevel,
-      risks: context.risks,
-      opportunities: context.opportunities
+      level: context.risk.riskLevel,
+      risks: context.risk.risks,
+      opportunities: context.risk.opportunities
     };
   }
 
@@ -330,12 +328,10 @@ Return compact valid JSON only. Do not use markdown. Do not add explanations out
 Generate a final investment brief for "${symbol}" using the dashboard context.
 Return compact valid JSON only. Do not use markdown. Do not add explanations outside JSON. Return this exact JSON shape:
 {
-  "report": {
-    "title": "string",
-    "recommendation": "Buy | Hold | Watch | Avoid | Not rated",
-    "thesis": "two sentence thesis",
-    "bullets": ["bullet 1", "bullet 2", "bullet 3", "bullet 4"]
-  }
+  "title": "string",
+  "recommendation": "Buy | Hold | Watch | Avoid | Not rated",
+  "thesis": "two sentence thesis",
+  "bullets": ["bullet 1", "bullet 2", "bullet 3", "bullet 4"]
 }${contextBlock(context)}`
 };
 
@@ -358,8 +354,8 @@ export const runAgent = async (agentId, symbol, emitLog, context = {}, signal) =
     emitLog(`${agent.label} loaded live price and intraday chart data.`);
 
     return {
-      ...marketPayload,
-      symbol: marketPayload.company.symbol
+      symbol: marketPayload.company.symbol,
+      data: marketPayload
     };
   }
 
@@ -368,10 +364,18 @@ export const runAgent = async (agentId, symbol, emitLog, context = {}, signal) =
   const { json, text, sources } = await callGemini(prompts[agentId](resolvedSymbol, context), signal);
   emitLog(`${agent.label} received Gemini response.`);
 
+  // Defensive: if Gemini still wraps report inside a "report" field, unwrap it.
+  let payload = json;
+  if (agentId === 'report' && payload?.report && !payload.title) {
+    payload = payload.report;
+  }
+
   return {
-    ...(json || plainTextPayload(agentId, resolvedSymbol, text)),
-    [`${agentId}Sources`]: sources,
-    rawText: json ? undefined : text,
-    symbol: json?.company?.symbol || resolvedSymbol
+    symbol: resolvedSymbol,
+    [agentId]: {
+      ...(payload || plainTextPayload(agentId, resolvedSymbol, text)),
+      sources,
+      rawText: payload ? undefined : text
+    }
   };
 };
