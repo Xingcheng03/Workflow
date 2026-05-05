@@ -130,6 +130,16 @@ http://127.0.0.1:5175/
 
 以终端显示的地址为准。
 
+### 其它常用命令
+
+| 命令 | 作用 |
+|---|---|
+| `npm run dev` | 启动开发服务器 |
+| `npm run build` | 生产构建到 `dist/` |
+| `npm run preview` | 预览生产构建（先要 `build`） |
+| `npm test` | 跑测试套件（59 个用例） |
+| `npm run test:watch` | 测试 watch 模式 |
+
 ## 6. 使用方法
 
 打开网页后：
@@ -143,7 +153,7 @@ AAPL
 MSFT
 ```
 
-2. 点击 `Run Full Analysis`
+2. 点击 `Run Full Analysis`，或者直接在输入框按 `Enter` 键。
 
 3. 系统会按以下顺序运行（Phase 2 三个 agent 并发执行）：
 
@@ -153,18 +163,25 @@ Phase 2: News Agent + Analysis Agent + Risk Agent  （并发）
 Phase 3: Report Agent     （综合所有结果）
 ```
 
-4. 运行中可以点右上角的 X 按钮取消整个 workflow。
+4. 运行中可以点右上角的 X 按钮、或按 `Esc` 键取消整个 workflow。
 
 5. 页面会显示：
 
-- 股票价格
-- 涨跌幅
-- 价格趋势图
+- 股票价格、涨跌幅、价格趋势图（来自 Yahoo Finance）
+- 投资评级 chip：Buy / Hold / Watch / Avoid，对应绿/黄/橙/红
+- 情绪进度条：0–100，颜色随分数变化
 - 新闻头条 / 估值分析 / 风险与机会（Agent Findings 面板）
-- 最终投资报告
-- Agent 执行日志（最多保留 40 条）
+- 最终投资报告 + 引用来源链接
+- Agent 执行日志（最多保留 40 条；缓存命中的行末尾标 `(cached)`）
 
-6. 同一个 ticker 在 12 分钟内重新跑会命中缓存（Gemini）/ 90 秒内命中行情缓存。
+6. 同一个 ticker 在 12 分钟内重新跑会命中 Gemini 缓存，行情则在 90 秒内复用 Yahoo 响应。Status pill 在并发阶段会显示 `Running 3 agents in parallel`。
+
+### 键盘快捷键
+
+| 按键 | 行为 |
+|---|---|
+| `Enter`（在输入框内） | 触发 Run Full Analysis |
+| `Esc`（任意位置） | 取消正在运行的 workflow |
 
 ## 7. 每个 Agent 的作用
 
@@ -262,7 +279,13 @@ npm install
 src/App.jsx
 ```
 
-React 页面和 dashboard 逻辑。
+React 页面，纯展示层（约 380 行 JSX）。
+
+```text
+src/hooks/useAgentWorkflow.js
+```
+
+自定义 hook，封装 workflow 编排：state、abort、并发执行、缓存命中检测。App.jsx 通过这个 hook 拿数据和回调，业务逻辑可单独测试。
 
 ```text
 src/services/agentApi.js
