@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FinAgent Dashboard — Project Tour</title>
+<style>
+  :root {
+    --bg: #f4f1eb;
+    --bg-elev: #fffcf6;
+    --bg-code: #1f1c16;
+    --border: #d8d0c2;
+    --border-soft: #ecdfd0;
+    --text: #1b1c1f;
+    --text-soft: #6e675d;
+    --text-faint: #8a847b;
+    --accent: #6e7f2d;
+    --green: #1d8f7a;
+    --red: #c74751;
+    --orange: #c8791a;
+    --purple: #7355d6;
+    --blue: #5567d9;
+    --shadow-sm: 0 4px 14px rgba(45, 35, 25, 0.08);
+    --shadow-md: 0 12px 32px rgba(45, 35, 25, 0.12);
+    color-scheme: light;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+      "PingFang SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.6;
+    font-size: 16px;
+  }
+
+  body {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0) 380px),
+      var(--bg);
+    min-height: 100vh;
+  }
+
+  .container {
+    width: min(1100px, 100% - 40px);
+    margin: 0 auto;
+    padding: 48px 0 80px;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: 16px;
+    padding: 44px 40px;
+    box-shadow: var(--shadow-md);
+    margin-bottom: 36px;
+  }
+  .hero p.eyebrow {
+    margin: 0 0 8px;
+    color: var(--accent);
+    font-size: 0.82rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .hero h1 {
+    margin: 0 0 16px;
+    font-size: clamp(2rem, 4vw, 2.8rem);
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    font-weight: 900;
+  }
+  .hero p.lede {
+    margin: 0;
+    font-size: 1.12rem;
+    color: var(--text-soft);
+    max-width: 720px;
+  }
+  .hero .quick-links {
+    margin-top: 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .hero .quick-links a {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 700;
+    transition: transform 0.15s ease, border-color 0.15s ease;
+  }
+  .hero .quick-links a:hover {
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+  .hero .quick-links a.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+
+  /* ── Section primitives ── */
+  section {
+    margin-top: 56px;
+  }
+  section > h2 {
+    font-size: 0.9rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 6px;
+  }
+  section > h2 + h3 {
+    font-size: 1.7rem;
+    font-weight: 800;
+    margin: 0 0 12px;
+    line-height: 1.15;
+  }
+  section .section-lede {
+    margin: 0 0 28px;
+    color: var(--text-soft);
+    font-size: 1.02rem;
+    max-width: 740px;
+  }
+
+  /* ── Cards ── */
+  .card {
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: 12px;
+    padding: 22px 24px;
+    box-shadow: var(--shadow-sm);
+  }
+  .grid {
+    display: grid;
+    gap: 18px;
+  }
+  .grid.cols-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .grid.cols-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+
+  /* ── Agent cards ── */
+  .agent-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  }
+  .agent-card {
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: 12px;
+    padding: 18px 20px;
+    border-left: 4px solid var(--agent-accent, var(--accent));
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .agent-card .agent-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+  .agent-card .agent-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--agent-accent) 14%, white);
+    color: var(--agent-accent);
+    font-size: 1.1rem;
+    font-weight: 900;
+  }
+  .agent-card h4 {
+    margin: 0;
+    font-size: 1.08rem;
+    font-weight: 800;
+  }
+  .agent-card .role {
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--agent-accent);
+    margin-top: 2px;
+  }
+  .agent-card p {
+    margin: 0;
+    font-size: 0.94rem;
+    color: var(--text-soft);
+  }
+  .agent-card .agent-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .agent-card .agent-tags span {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-soft);
+    background: color-mix(in srgb, var(--agent-accent) 10%, white);
+    padding: 3px 8px;
+    border-radius: 6px;
+  }
+
+  /* ── Phase flow diagram ── */
+  .phase-flow {
+    display: flex;
+    align-items: stretch;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 14px 4px;
+  }
+  .phase-cell {
+    flex: 1 1 0;
+    min-width: 130px;
+    border: 1.5px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: 12px;
+    padding: 14px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    text-align: center;
+    box-shadow: var(--shadow-sm);
+    position: relative;
+  }
+  .phase-cell .phase-num {
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .phase-cell .phase-agent-pill {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--phase-color);
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    background: color-mix(in srgb, var(--phase-color) 8%, white);
+    border-radius: 8px;
+    width: 100%;
+  }
+  .phase-cell .phase-name {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    margin-top: auto;
+  }
+  .phase-cell .badge {
+    position: absolute;
+    top: -10px;
+    right: -8px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    color: white;
+    background: var(--purple);
+  }
+  .phase-arrow {
+    align-self: center;
+    color: var(--text-faint);
+    font-size: 1.4rem;
+    font-weight: 900;
+    flex: 0 0 auto;
+  }
+
+  /* ── Verifier table ── */
+  .check-table {
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+  }
+  .check-row {
+    display: grid;
+    grid-template-columns: 50px 1fr 110px;
+    gap: 14px;
+    padding: 14px 18px;
+    align-items: center;
+  }
+  .check-row + .check-row {
+    border-top: 1px solid var(--border-soft);
+  }
+  .check-row .check-num {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, var(--accent) 12%, white);
+    color: var(--accent);
+    font-weight: 900;
+    font-size: 0.95rem;
+  }
+  .check-row .check-body strong {
+    display: block;
+    font-size: 1rem;
+    margin-bottom: 2px;
+  }
+  .check-row .check-body span {
+    color: var(--text-soft);
+    font-size: 0.92rem;
+  }
+  .check-row .severity {
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 4px 10px;
+    border-radius: 6px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  .severity.blocking { background: #fbe4e6; color: #a93540; }
+  .severity.warning  { background: #fcedd6; color: #8a5210; }
+
+  /* ── Panel tour ── */
+  .panel-tour {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  }
+  .panel-card {
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: 12px;
+    padding: 18px 20px;
+    box-shadow: var(--shadow-sm);
+  }
+  .panel-card h4 {
+    margin: 0 0 6px;
+    font-size: 1.04rem;
+    font-weight: 800;
+  }
+  .panel-card .panel-role {
+    font-size: 0.74rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 8px;
+  }
+  .panel-card p {
+    margin: 0 0 8px;
+    color: var(--text-soft);
+    font-size: 0.92rem;
+  }
+  .panel-card .pill-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .panel-card .pill-row span {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--accent) 8%, white);
+    color: var(--text-soft);
+  }
+
+  /* ── Tech stack ── */
+  .tech-grid {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+  .tech-tile {
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: 10px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .tech-tile strong {
+    font-size: 0.96rem;
+    font-weight: 800;
+  }
+  .tech-tile .why {
+    font-size: 0.84rem;
+    color: var(--text-soft);
+  }
+
+  /* ── Code blocks + tables ── */
+  pre {
+    background: var(--bg-code);
+    color: #f0e7d6;
+    padding: 16px 18px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.86rem;
+    line-height: 1.5;
+    font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+  }
+  code {
+    background: color-mix(in srgb, var(--accent) 8%, white);
+    color: #4a4742;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 0.88em;
+    font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; }
+
+  table.std {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    font-size: 0.92rem;
+  }
+  table.std th {
+    background: color-mix(in srgb, var(--accent) 8%, white);
+    text-align: left;
+    padding: 10px 14px;
+    font-weight: 800;
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+  }
+  table.std td {
+    padding: 10px 14px;
+    border-top: 1px solid var(--border-soft);
+    vertical-align: top;
+  }
+  table.std code { background: color-mix(in srgb, var(--blue) 8%, white); }
+
+  /* ── Callouts ── */
+  .callout {
+    border-left: 4px solid var(--orange);
+    background: color-mix(in srgb, var(--orange) 6%, white);
+    padding: 14px 18px;
+    border-radius: 0 8px 8px 0;
+    margin: 18px 0;
+  }
+  .callout strong { color: var(--orange); }
+
+  .callout.green { border-left-color: var(--green); background: color-mix(in srgb, var(--green) 6%, white); }
+  .callout.green strong { color: var(--green); }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    color: var(--text-faint);
+    font-size: 0.86rem;
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  /* ── Workflow svg styling ── */
+  .arch-svg {
+    width: 100%;
+    max-width: 880px;
+    height: auto;
+    margin: 8px auto 0;
+    display: block;
+  }
+
+  /* ── TOC ── */
+  nav.toc {
+    position: sticky;
+    top: 16px;
+    align-self: start;
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 0.86rem;
+    box-shadow: var(--shadow-sm);
+  }
+  nav.toc h5 {
+    margin: 0 0 10px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  nav.toc a {
+    display: block;
+    padding: 4px 0;
+    color: var(--text-soft);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    padding-left: 8px;
+    margin-left: -2px;
+  }
+  nav.toc a:hover {
+    color: var(--accent);
+    border-left-color: var(--accent);
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    gap: 32px;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc { position: static; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+  <div class="container">
+
+    <header class="hero">
+      <p class="eyebrow">Project Tour</p>
+      <h1>FinAgent Dashboard</h1>
+      <p class="lede">
+        A six-agent, five-phase finance research workflow. Yahoo Finance
+        provides the verified facts; Gemini handles reasoning, news
+        summarization, and report writing; a dedicated Verifier agent
+        cross-checks the final report against eight rules and triggers a
+        revision when blocking issues are found.
+      </p>
+      <div class="quick-links">
+        <a class="primary" href="#agents">Meet the agents →</a>
+        <a href="#workflow">See the workflow</a>
+        <a href="#verifier">Verifier checks</a>
+        <a href="#panels">UI tour</a>
+        <a href="../README.md">README</a>
+        <a href="architecture.md">Architecture (deep)</a>
+      </div>
+    </header>
+
+    <div class="layout">
+      <nav class="toc">
+        <h5>On this page</h5>
+        <a href="#what">What it is</a>
+        <a href="#agents">The 6 agents</a>
+        <a href="#workflow">The 5 phases</a>
+        <a href="#verifier">Verifier checks</a>
+        <a href="#panels">UI tour</a>
+        <a href="#data">Data flow</a>
+        <a href="#tech">Tech stack</a>
+        <a href="#layout">Project layout</a>
+        <a href="#caches">Caching layers</a>
+        <a href="#setup">Setup</a>
+        <a href="#deploy">Deployment</a>
+      </nav>
+
+      <main>
+
+      <!-- ────── WHAT IT IS ────── -->
+      <section id="what">
+        <h2>1 · Overview</h2>
+        <h3>What this dashboard does</h3>
+        <p class="section-lede">
+          You type a stock ticker. Six agents collaborate to produce an
+          investment brief, then an independent Verifier agent re-reads the
+          brief alongside every upstream output and flags claims that
+          aren't grounded in the data. If the report has blocking issues,
+          the Report agent rewrites it and the Verifier checks again.
+        </p>
+
+        <div class="grid cols-2">
+          <div class="card">
+            <strong>The core idea</strong>
+            <p style="margin-top: 8px; color: var(--text-soft);">
+              <em>Deterministic facts come from Yahoo. Reasoning comes from
+              Gemini.</em> Stock prices, fundamentals, earnings dates — none of
+              that should be hallucinated. The Data agent fetches verified
+              numbers; every other agent is constrained to use only what
+              Data provides for numerical claims.
+            </p>
+          </div>
+          <div class="card">
+            <strong>Why a Verifier?</strong>
+            <p style="margin-top: 8px; color: var(--text-soft);">
+              LLMs drift. The synthesis step (Report) can quietly invent a
+              number, invert a margin trend, or cite a news event that
+              wasn't in the headlines. The Verifier replays the inputs and
+              checks the report against eight rules. Blocking failures
+              trigger one revision pass before the result is shown.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ────── AGENTS ────── -->
+      <section id="agents">
+        <h2>2 · The 6 agents</h2>
+        <h3>Each agent has a narrow lane</h3>
+        <p class="section-lede">
+          Boundaries are enforced by the prompts: Analysis can describe
+          fundamentals but not assign a risk level; Risk can identify
+          risks but not give a Buy/Hold rating; Report can synthesize but
+          must source numbers from Data. The Verifier checks these
+          boundaries explicitly.
+        </p>
+
+        <div class="agent-grid">
+          <div class="agent-card" style="--agent-accent: #1d8f7a;">
+            <div class="agent-head">
+              <div class="agent-icon">D</div>
+              <div>
+                <h4>Data Agent</h4>
+                <div class="role">Yahoo · No LLM</div>
+              </div>
+            </div>
+            <p>
+              Fetches the verified market snapshot — price, change, OHLC
+              candles, 30+ fundamentals, analyst targets, earnings calendar,
+              cash flow, balance-sheet metrics.
+            </p>
+            <div class="agent-tags">
+              <span>chart API</span><span>quoteSummary API</span><span>cookie + crumb</span>
+            </div>
+          </div>
+
+          <div class="agent-card" style="--agent-accent: #c8791a;">
+            <div class="agent-head">
+              <div class="agent-icon">N</div>
+              <div>
+                <h4>News Agent</h4>
+                <div class="role">Gemini + Search grounding</div>
+              </div>
+            </div>
+            <p>
+              Searches recent headlines, summarizes the three most
+              investor-relevant items, and returns a sentiment score
+              between 0 and 100. Cited via grounding URIs.
+            </p>
+            <div class="agent-tags">
+              <span>headlines</span><span>sentimentScore</span><span>sources</span>
+            </div>
+          </div>
+
+          <div class="agent-card" style="--agent-accent: #5567d9;">
+            <div class="agent-head">
+              <div class="agent-icon">A</div>
+              <div>
+                <h4>Analysis Agent</h4>
+                <div class="role">Gemini · grounded in Data + News</div>
+              </div>
+            </div>
+            <p>
+              Describes valuation, growth, profitability, and recent price
+              trend. Strictly backwards-looking — no price predictions.
+              Cannot assign a risk level (that's Risk's job).
+            </p>
+            <div class="agent-tags">
+              <span>valuation</span><span>growthView</span><span>marginView</span><span>trendView</span>
+            </div>
+          </div>
+
+          <div class="agent-card" style="--agent-accent: #c74751;">
+            <div class="agent-head">
+              <div class="agent-icon">R</div>
+              <div>
+                <h4>Risk Agent</h4>
+                <div class="role">Gemini · grounded in Data + News</div>
+              </div>
+            </div>
+            <p>
+              Identifies investment risks and opportunities, assigns a
+              risk level (Low / Moderate / Elevated / High). Cannot
+              forecast prices or give a Buy/Hold rating.
+            </p>
+            <div class="agent-tags">
+              <span>riskLevel</span><span>risks</span><span>opportunities</span>
+            </div>
+          </div>
+
+          <div class="agent-card" style="--agent-accent: #6e7f2d;">
+            <div class="agent-head">
+              <div class="agent-icon">P</div>
+              <div>
+                <h4>Report Agent</h4>
+                <div class="role">Gemini · synthesis</div>
+              </div>
+            </div>
+            <p>
+              Combines all upstream outputs into a final investment brief:
+              title, recommendation chip (Buy/Hold/Watch/Avoid), a
+              two-sentence thesis, and four bullet points. Numerical claims
+              must come from Data only.
+            </p>
+            <div class="agent-tags">
+              <span>title</span><span>recommendation</span><span>thesis</span><span>bullets</span>
+            </div>
+          </div>
+
+          <div class="agent-card" style="--agent-accent: #7355d6;">
+            <div class="agent-head">
+              <div class="agent-icon">V</div>
+              <div>
+                <h4>Verifier Agent</h4>
+                <div class="role">Gemini · no grounding (offline rules)</div>
+              </div>
+            </div>
+            <p>
+              Reads Data, News, Analysis, Risk, and Report v1, then runs 8
+              consistency checks. Returns <code>pass</code> /
+              <code>warn</code> / <code>fail</code> with per-issue
+              severity. Blocking issues trigger exactly one revision.
+            </p>
+            <div class="agent-tags">
+              <span>status</span><span>issues[]</span><span>blocking / warning</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ────── WORKFLOW ────── -->
+      <section id="workflow">
+        <h2>3 · The 5 phases</h2>
+        <h3>How a single ticker becomes a verified brief</h3>
+        <p class="section-lede">
+          Phases are sequential except Phase 3, where Analysis and Risk
+          fan out and run concurrently against the same context. Phase 5
+          is a small loop: Verifier → optional Revise → Verifier.
+        </p>
+
+        <div class="phase-flow">
+          <div class="phase-cell" style="--phase-color: #1d8f7a;">
+            <div class="phase-num">Phase 1</div>
+            <div class="phase-agent-pill">Data</div>
+            <div class="phase-name">Data</div>
+          </div>
+          <div class="phase-arrow">→</div>
+          <div class="phase-cell" style="--phase-color: #c8791a;">
+            <div class="phase-num">Phase 2</div>
+            <div class="phase-agent-pill">News</div>
+            <div class="phase-name">News</div>
+          </div>
+          <div class="phase-arrow">→</div>
+          <div class="phase-cell" style="--phase-color: #5567d9;">
+            <div class="phase-num">Phase 3</div>
+            <div class="phase-agent-pill" style="--phase-color: #5567d9;">Analysis</div>
+            <div class="phase-agent-pill" style="--phase-color: #c74751;">Risk</div>
+            <div class="phase-name">Analysis · Risk</div>
+          </div>
+          <div class="phase-arrow">→</div>
+          <div class="phase-cell" style="--phase-color: #6e7f2d;">
+            <div class="phase-num">Phase 4</div>
+            <div class="phase-agent-pill">Report</div>
+            <div class="phase-name">Report</div>
+          </div>
+          <div class="phase-arrow">→</div>
+          <div class="phase-cell" style="--phase-color: #7355d6;">
+            <div class="phase-num">Phase 5</div>
+            <div class="phase-agent-pill">Verifier</div>
+            <div class="phase-name">Verify ⟲</div>
+            <span class="badge">v1 / revise / v2</span>
+          </div>
+        </div>
+
+        <div class="grid cols-2" style="margin-top: 24px;">
+          <div class="card">
+            <strong>Phase 5 loop in detail</strong>
+            <p style="margin-top: 6px; color: var(--text-soft); font-size: 0.92rem;">
+              <strong style="color: var(--text);">5a · Verify v1.</strong> Verifier reads upstream + Report v1. If
+              <code>pass</code> or <code>warn</code> only, the workflow ends.
+            </p>
+            <p style="margin-top: 6px; color: var(--text-soft); font-size: 0.92rem;">
+              <strong style="color: var(--text);">5b · Revise (only if blocking).</strong> Report agent re-runs
+              with the previous brief + the blocking issues as feedback.
+              Grounding is disabled — the rewrite reasons on existing facts.
+            </p>
+            <p style="margin-top: 6px; color: var(--text-soft); font-size: 0.92rem;">
+              <strong style="color: var(--text);">5c · Verify v2.</strong> One more verifier pass. The result
+              (pass / warn / fail) is what the dashboard ultimately shows.
+              No third revision attempt.
+            </p>
+          </div>
+          <div class="card">
+            <strong>Cancellation</strong>
+            <p style="margin-top: 6px; color: var(--text-soft); font-size: 0.92rem;">
+              <code>Esc</code> or the X button aborts the in-flight
+              AbortController. Any agent whose fetch was in flight gets
+              its <code>AbortError</code> propagated; the workflow exits
+              cleanly without partial state.
+            </p>
+            <p style="margin-top: 8px; color: var(--text-soft); font-size: 0.92rem;">
+              A synchronous re-entry guard prevents fast double-clicks on
+              Run from spawning two parallel workflows that would orphan
+              the first AbortController.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ────── VERIFIER ────── -->
+      <section id="verifier">
+        <h2>4 · The Verifier's 8 checks</h2>
+        <h3>Eight rules that catch report drift</h3>
+        <p class="section-lede">
+          Each rule is either <span class="severity blocking" style="display: inline-block; vertical-align: middle;">blocking</span>
+          (triggers a revision) or
+          <span class="severity warning" style="display: inline-block; vertical-align: middle;">warning</span>
+          (surfaced but doesn't trigger revision). Verifier output is
+          deterministic JSON: <code>{ status, issues: [...] }</code>.
+        </p>
+
+        <div class="check-table">
+          <div class="check-row">
+            <div class="check-num">1</div>
+            <div class="check-body">
+              <strong>Number fidelity</strong>
+              <span>Every number in the report must appear in <code>DATA_METRICS</code> within ±5% tolerance. Numbers in Analysis or Risk text don't count — those are restatements.</span>
+            </div>
+            <span class="severity blocking">blocking</span>
+          </div>
+          <div class="check-row">
+            <div class="check-num">2</div>
+            <div class="check-body">
+              <strong>Recommendation × RiskLevel matrix</strong>
+              <span>A 4×5 truth table: Buy + High Risk = blocking, Avoid + Low Risk = blocking, Buy + Elevated = warning, Avoid + Moderate = warning. Hold/Watch + anything = OK.</span>
+            </div>
+            <span class="severity blocking">b/w</span>
+          </div>
+          <div class="check-row">
+            <div class="check-num">3</div>
+            <div class="check-body">
+              <strong>Self-prediction language</strong>
+              <span>Phrases like "will reach $X" or "expected to recover" without third-party attribution are flagged. "Analysts target $X" is OK because it's attributed.</span>
+            </div>
+            <span class="severity warning">warning</span>
+          </div>
+          <div class="check-row">
+            <div class="check-num">4</div>
+            <div class="check-body">
+              <strong>Recommendation reasoning</strong>
+              <span>The recommendation must be grounded in Risk + Analysis findings. If the only justification is "analysts say buy" or analyst consensus alone, it's flagged.</span>
+            </div>
+            <span class="severity warning">warning</span>
+          </div>
+          <div class="check-row">
+            <div class="check-num">5</div>
+            <div class="check-body">
+              <strong>Bullet traceability</strong>
+              <span>Each bullet must connect to an upstream fact: a Data metric, a News headline, a Risk item, or an Analysis point. Bullets that introduce new claims are flagged.</span>
+            </div>
+            <span class="severity warning">warning</span>
+          </div>
+          <div class="check-row">
+            <div class="check-num">6</div>
+            <div class="check-body">
+              <strong>Upstream boundary lint</strong>
+              <span>Analysis containing risk-level language, or Risk containing recommendation language, is flagged. Catches agents drifting outside their lanes.</span>
+            </div>
+            <span class="severity warning">warning</span>
+          </div>
+          <div class="check-row">
+            <div class="check-num">7</div>
+            <div class="check-body">
+              <strong>News event fidelity</strong>
+              <span>Specific news events cited in the report must appear in <code>NEWS_OUTPUT.news</code> (or as a calendar event in DATA_METRICS). Citing a phantom event is blocking.</span>
+            </div>
+            <span class="severity blocking">blocking</span>
+          </div>
+          <div class="check-row">
+            <div class="check-num">8</div>
+            <div class="check-body">
+              <strong>Thesis vs Analysis direction</strong>
+              <span>Thesis can't contradict Analysis: e.g. Analysis says "decelerating growth" but thesis says "accelerating growth story" → flagged. Same for valuation and margin direction.</span>
+            </div>
+            <span class="severity warning">warning</span>
+          </div>
+        </div>
+
+        <div class="callout green">
+          <strong>Why warnings don't trigger revision.</strong>
+          The revision loop only fires on <em>fail</em> status (or any
+          blocking issue). Warnings are surfaced in the report's Verifier
+          strip so the user sees them, but a re-write is unlikely to fix
+          them — they're often subjective wording calls.
+        </div>
+      </section>
+
+      <!-- ────── PANELS ────── -->
+      <section id="panels">
+        <h2>5 · UI tour</h2>
+        <h3>What every panel shows and how to read it</h3>
+        <p class="section-lede">
+          The dashboard is one page with 9 panels arranged in a CSS grid.
+          Every panel is wrapped in <code>React.memo</code> so a workflow
+          tick that only changes one slice (e.g. a new log line) only
+          re-renders the relevant panel.
+        </p>
+
+        <div class="panel-tour">
+          <div class="panel-card">
+            <div class="panel-role">Header</div>
+            <h4>Topbar</h4>
+            <p>Status pill on the right indicates the current phase with phrasing tailored per phase.</p>
+            <div class="pill-row">
+              <span>Ready</span><span>Running Data Agent</span><span>Running 2 agents in parallel</span><span>Verifying report</span><span>Revising report (1 of 1)</span><span>Verifying revised report</span>
+            </div>
+          </div>
+          <div class="panel-card">
+            <div class="panel-role">Input</div>
+            <h4>Command Strip</h4>
+            <p>Ticker field, company snapshot, primary <em>Run Full Analysis</em> button, and a dual-mode <em>X / Reset</em> button.</p>
+            <div class="pill-row">
+              <span>Enter to run</span><span>Esc to cancel</span><span>auto-uppercase</span>
+            </div>
+          </div>
+          <div class="panel-card">
+            <div class="panel-role">Drill-down</div>
+            <h4>Agent Controls</h4>
+            <p>Six clickable cards. <strong>Click any card</strong> to open its detail modal — view-only; no single-agent run trigger.</p>
+            <div class="pill-row">
+              <span>color = state</span><span>view detail on click</span>
+            </div>
+          </div>
+          <div class="panel-card">
+            <div class="panel-role">Visualization</div>
+            <h4>Workflow Track</h4>
+            <p>Five phase cells. Phase 3 stacks Analysis + Risk to make concurrency visible. Phase 5 carries a sub-state badge (v1 / revise / v2).</p>
+            <div class="pill-row">
+              <span>parallel cell</span><span>verify badge</span><span>per-phase state</span>
+            </div>
+          </div>
+          <div class="panel-card">
+            <div class="panel-role">Numbers</div>
+            <h4>Financial Metrics</h4>
+            <p>16 cards: quote, valuation (TTM + Forward P/E, beta), profitability + cash, earnings cycle, analyst view. Plus a sentiment bar.</p>
+            <div class="pill-row">
+              <span>Beta</span><span>Forward P/E</span><span>Op Margin</span><span>EPS Surprise</span><span>Days to Earnings</span><span>Consensus</span>
+            </div>
+          </div>
+          <div class="panel-card">
+            <div class="panel-role">Chart</div>
+            <h4>Price Trend</h4>
+            <p>Real OHLC candlesticks (pure SVG, no library). Volume sub-pane, latest-close reference line + label, locale-formatted date ticks (month-day for daily, HH:MM for intraday).</p>
+            <div class="pill-row">
+              <span>OHLC</span><span>volume</span><span>latest-price marker</span><span>52w range</span>
+            </div>
+          </div>
+          <div class="panel-card">
+            <div class="panel-role">Reasoning</div>
+            <h4>Agent Findings</h4>
+            <p>Three optional sub-blocks (News headlines / Analysis 4 fields + summary / Risk level + risks/opportunities columns).</p>
+            <div class="pill-row">
+              <span>headlines</span><span>valuation/growth/margin</span><span>risks · opportunities</span>
+            </div>
+          </div>
+          <div class="panel-card">
+            <div class="panel-role">Output</div>
+            <h4>Report</h4>
+            <p>Title + recommendation chip + thesis + bullets. Includes a Verifier strip with status chip and per-issue rows. Sources list of grounding citations.</p>
+            <div class="pill-row">
+              <span>recommendation</span><span>Verifier strip</span><span>sources</span>
+            </div>
+          </div>
+          <div class="panel-card">
+            <div class="panel-role">Activity</div>
+            <h4>Logs</h4>
+            <p>Ring buffer of the last 40 events with local timestamps. Cache hits are tagged <code>(cached)</code>.</p>
+            <div class="pill-row">
+              <span>40-row ring buffer</span><span>aria-live</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="callout">
+          <strong>Agent Detail Modal.</strong>
+          Clicking any agent in Agent Controls opens a focused modal with
+          that agent's full output. Data shows OHLC + volume charts plus
+          all 30+ metrics; News shows the full headline list with sources;
+          Verifier shows every issue with severity color, problem, claim
+          quote, and suggested fix. Esc, backdrop click, or the X button
+          closes it. <code>role="dialog"</code> + <code>aria-modal</code> +
+          auto-focus.
+        </div>
+      </section>
+
+      <!-- ────── DATA FLOW ────── -->
+      <section id="data">
+        <h2>6 · Data flow</h2>
+        <h3>From Yahoo to the rendered brief</h3>
+        <p class="section-lede">
+          The Data agent fetches three Yahoo endpoints in parallel, then
+          downstream agents reason on a summarized projection of the
+          state. The summarization step is intentional — it keeps prompt
+          tokens down and prevents leaking transient fields (rawText,
+          marketMeta source strings) into the LLM.
+        </p>
+
+        <table class="std">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Endpoint</th>
+              <th>What we extract</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Yahoo Chart (intraday)</strong></td>
+              <td><code>/api/market-chart/&lt;sym&gt;</code></td>
+              <td>OHLCV bars (intraday), regularMarketPrice, day/52w range, volume</td>
+            </tr>
+            <tr>
+              <td><strong>Yahoo Chart (history)</strong></td>
+              <td><code>/api/market-chart/&lt;sym&gt;?range=6mo&interval=1d</code></td>
+              <td>6-month daily OHLCV, derives 6mo / 1mo return, drawdown</td>
+            </tr>
+            <tr>
+              <td><strong>Yahoo quoteSummary</strong></td>
+              <td><code>/api/market-summary/&lt;sym&gt;</code></td>
+              <td>10 modules: summaryDetail, financialData, defaultKeyStatistics, calendar, earnings history/trend, recommendation trend, quarterly statements</td>
+            </tr>
+            <tr>
+              <td><strong>Gemini API</strong></td>
+              <td><code>/v1beta/models/&lt;model&gt;:generateContent</code></td>
+              <td>Per-agent payload (News / Analysis / Risk / Report / Verifier). Optional Google Search grounding.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout">
+          <strong>Why the Vite-middleware proxy?</strong>
+          Yahoo's quoteSummary endpoint requires a (cookie, crumb) pair
+          obtained via a separate GET on fc.yahoo.com. Doing this from the
+          browser fails on CORS. The proxy handles it server-side, with
+          in-flight request deduplication, a refreshCrumb mutex (so
+          concurrent first-time callers share a single auth round-trip),
+          and a 15-second timeout.
+        </div>
+      </section>
+
+      <!-- ────── TECH ────── -->
+      <section id="tech">
+        <h2>7 · Tech stack</h2>
+        <h3>Choices, with reasons</h3>
+
+        <div class="tech-grid">
+          <div class="tech-tile">
+            <strong>React 18 + Vite 6</strong>
+            <span class="why">Fast dev loop, ESM-native build, proven SPA story.</span>
+          </div>
+          <div class="tech-tile">
+            <strong>Vitest + @testing-library/react</strong>
+            <span class="why">Same loader as Vite (no transform mismatches). 201 tests across services, hooks, components.</span>
+          </div>
+          <div class="tech-tile">
+            <strong>JSDoc @typedef (no TypeScript)</strong>
+            <span class="why">Modern editors give type hints from the JSDoc; the migration to .ts later is small.</span>
+          </div>
+          <div class="tech-tile">
+            <strong>Lucide-react icons</strong>
+            <span class="why">Tree-shakable via barrel — only the 12 icons we import end up in the bundle.</span>
+          </div>
+          <div class="tech-tile">
+            <strong>SVG candlesticks (hand-rolled)</strong>
+            <span class="why">No charting library. ~250 lines of SVG. Bundle saving vs. Recharts/lightweight-charts: 80–150 KB.</span>
+          </div>
+          <div class="tech-tile">
+            <strong>sessionStorage cache</strong>
+            <span class="why">Per-tab, namespaced by model + grounding flag + prompt hash. 12 min for Gemini, 90 s for market data.</span>
+          </div>
+          <div class="tech-tile">
+            <strong>AbortController + AbortSignal.any()</strong>
+            <span class="why">User cancel + 60 s per-attempt timeout merged into one signal per Gemini request.</span>
+          </div>
+          <div class="tech-tile">
+            <strong>ESLint flat config + GH Actions CI</strong>
+            <span class="why">Lint, test, build run on every push and PR. No warnings allowed.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ────── PROJECT LAYOUT ────── -->
+      <section id="layout">
+        <h2>8 · Project layout</h2>
+        <h3>Where things live</h3>
+        <pre><code>src/
+  App.jsx                       layout shell, ~140 lines, no business logic
+  main.jsx                      entry, wraps the tree in &lt;ErrorBoundary&gt;
+  constants.js                  UI constants (chip palette, agent icons, phases)
+  hooks/
+    useAgentWorkflow.js         workflow controller — state, phase pipeline, abort
+  services/
+    cache.js                    sessionStorage cache (90s market, 12min gemini)
+    agentApi/                   barrel re-export
+      definitions.js            agent metadata + ticker validation
+      parseJson.js              extract JSON from LLM output (tolerates fences + prose)
+      geminiClient.js           Gemini HTTP client with retry/cache/timeout
+      prompts.js                six prompt templates + summarizeContext
+      runner.js                 runAgent dispatcher
+      types.js                  JSDoc @typedef definitions
+    marketData/                 barrel re-export
+      formatters.js             pre-format numbers as flat strings
+      yahooParsers.js           Yahoo-response field parsers
+      index.js                  fetchMarketData orchestrator
+  components/                   each panel a memo'd component
+    Topbar / CommandStrip / ErrorBanner /
+    AgentControls / WorkflowTrack /
+    MetricsPanel / FindingsPanel / TrendPanel / LogPanel / ReportPanel /
+    AgentDetailModal / PriceChart / Chip / SentimentBar / ErrorBoundary
+
+server/
+  yahooProxy.js                 dev/preview-only Yahoo proxy
+
+docs/
+  index.html                    this page
+  architecture.md               deep architecture reference
+
+tests/
+  components/                   atom + panel rendering tests
+  hooks/                        useAgentWorkflow integration tests
+  services/                     unit tests per module
+  server/                       Yahoo proxy dedup + mutex tests</code></pre>
+      </section>
+
+      <!-- ────── CACHES ────── -->
+      <section id="caches">
+        <h2>9 · Caching layers</h2>
+        <h3>Where state is stored and for how long</h3>
+
+        <table class="std">
+          <thead>
+            <tr><th>Layer</th><th>Where</th><th>TTL</th><th>Key</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Yahoo summary</td>
+              <td>sessionStorage (browser)</td>
+              <td>90 s</td>
+              <td><code>finagent:market:&lt;symbol&gt;</code></td>
+            </tr>
+            <tr>
+              <td>Gemini response</td>
+              <td>sessionStorage (browser)</td>
+              <td>12 min</td>
+              <td><code>finagent:gemini:&lt;model&gt;:&lt;g|j&gt;:&lt;promptHash&gt;</code></td>
+            </tr>
+            <tr>
+              <td>Yahoo proxy in-flight</td>
+              <td>in-memory (dev server)</td>
+              <td>request lifetime</td>
+              <td><code>chart:&lt;sym&gt;:&lt;range&gt;:&lt;interval&gt;</code> / <code>summary:&lt;sym&gt;</code></td>
+            </tr>
+            <tr>
+              <td>Yahoo crumb</td>
+              <td>in-memory (dev server)</td>
+              <td>until 401</td>
+              <td>single global, refresh under mutex</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="callout green">
+          <strong>Cache key contains the model.</strong>
+          Switching <code>VITE_GEMINI_MODEL</code> automatically invalidates
+          the previous model's cached responses — they don't pollute the
+          next run.
+        </div>
+      </section>
+
+      <!-- ────── SETUP ────── -->
+      <section id="setup">
+        <h2>10 · Setup</h2>
+        <h3>From zero to local dashboard</h3>
+
+        <h4 style="margin: 24px 0 8px;">Prerequisites</h4>
+        <ul style="color: var(--text-soft); margin: 0;">
+          <li>Node.js 18+ (20 recommended)</li>
+          <li>A Gemini API key — free tier works at <a href="https://aistudio.google.com/" target="_blank" rel="noopener noreferrer">aistudio.google.com</a></li>
+        </ul>
+
+        <h4 style="margin: 24px 0 8px;">Install &amp; run</h4>
+        <pre><code>git clone &lt;this-repo&gt;
+cd Workflow
+npm install
+# Create .env.local with your Gemini key (see below)
+npm run dev</code></pre>
+
+        <h4 style="margin: 24px 0 8px;">.env.local template</h4>
+        <pre><code>VITE_GEMINI_API_KEY=AIzaSy...your-key
+VITE_GEMINI_MODEL=gemini-2.5-flash
+VITE_GEMINI_USE_GOOGLE_SEARCH=true</code></pre>
+
+        <h4 style="margin: 24px 0 8px;">npm scripts</h4>
+        <table class="std">
+          <thead><tr><th>Command</th><th>What it does</th></tr></thead>
+          <tbody>
+            <tr><td><code>npm run dev</code></td><td>Dev server with the Yahoo proxy</td></tr>
+            <tr><td><code>npm run build</code></td><td>Static build into <code>dist/</code></td></tr>
+            <tr><td><code>npm run preview</code></td><td>Preview the prod build (proxy still active)</td></tr>
+            <tr><td><code>npm run lint</code></td><td>ESLint flat config</td></tr>
+            <tr><td><code>npm test</code></td><td>Run all 201 tests</td></tr>
+            <tr><td><code>npm run test:watch</code></td><td>Watch mode</td></tr>
+          </tbody>
+        </table>
+
+        <h4 style="margin: 24px 0 8px;">If Gemini quota is exhausted</h4>
+        <p style="color: var(--text-soft); margin: 0 0 8px;">
+          A <code>limit: 0</code> error means the API key has zero free-tier
+          allowance for that model — switching models is the right fix:
+        </p>
+        <ol style="color: var(--text-soft); margin: 0;">
+          <li>First try <code>VITE_GEMINI_MODEL=gemini-2.0-flash</code> — drop-in compatible</li>
+          <li>Then <code>gemini-2.0-flash-lite</code> (separate quota pool)</li>
+          <li>Then <code>gemini-1.5-flash</code> with <code>VITE_GEMINI_USE_GOOGLE_SEARCH=false</code> (1.5 uses an older tool format)</li>
+          <li>Or generate a fresh key from a Google account that hasn't been linked to billing</li>
+        </ol>
+      </section>
+
+      <!-- ────── DEPLOY ────── -->
+      <section id="deploy">
+        <h2>11 · Deployment caveat</h2>
+        <h3>This project does not work as a static deploy</h3>
+        <p class="section-lede">
+          The dashboard hits <code>/api/market-chart/...</code> and
+          <code>/api/market-summary/...</code>. Those routes are registered
+          by <code>server/yahooProxy.js</code> against Vite's dev/preview
+          server middleware. <strong>A bare <code>dist/</code> static deploy
+          (Netlify, Vercel, GitHub Pages, etc.) has no <code>/api/*</code>
+          routes</strong> and would 404 every market request.
+        </p>
+
+        <div class="callout">
+          <strong>Doing it for real?</strong> The Yahoo proxy logic is
+          already factored into a single file — lift
+          <code>server/yahooProxy.js</code> into an Express, Fastify, or
+          Cloudflare Workers handler with minimal changes. The Yahoo
+          API contract, cookie+crumb handshake, in-flight dedup, and
+          refresh mutex all transplant directly.
+        </div>
+      </section>
+
+      <footer>
+        <span>FinAgent Dashboard · finance research workflow with verification</span>
+        <span>Open <a href="../README.md">README.md</a> · <a href="architecture.md">architecture.md</a></span>
+      </footer>
+
+      </main>
+    </div>
+  </div>
+</body>
+</html>

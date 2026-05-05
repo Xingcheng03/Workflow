@@ -1,11 +1,15 @@
 # FinAgent Dashboard
 
-> 六个 agent 五个阶段的金融分析工作流。Yahoo 提供事实，Gemini 负责推理，
-> 最后由 Verifier 交叉核对。完整架构见 [`docs/architecture.md`](docs/architecture.md)。
+> A six-agent, five-phase finance research workflow. Yahoo provides the
+> facts, Gemini does the reasoning, and a Verifier cross-checks the final
+> report.
+>
+> - Visual project tour: [`docs/index.html`](docs/index.html) (open in any browser)
+> - Deep architecture reference: [`docs/architecture.md`](docs/architecture.md)
 
-## 快速上手
+## Quick start
 
-需要 **Node.js 18+**（推荐 20）。
+Requires **Node.js 18+** (20 recommended).
 
 ```bash
 git clone <this-repo>
@@ -13,98 +17,159 @@ cd Workflow
 npm install
 ```
 
-在项目根目录创建 `.env.local`：
+Create `.env.local` in the project root:
 
 ```env
-VITE_GEMINI_API_KEY=AIzaSy...你的key
+VITE_GEMINI_API_KEY=AIzaSy...your-key
 VITE_GEMINI_MODEL=gemini-2.5-flash
 VITE_GEMINI_USE_GOOGLE_SEARCH=true
 ```
 
-注意：
+Notes:
 
-- 文件名是 `.env.local`，不是 `env.local` 或 `.env.local.txt`
-- key 不要加引号、不要有空格
-- 改完 `.env.local` 必须重启 dev server
+- The filename is exactly `.env.local` (not `env.local` or `.env.local.txt`)
+- Do not wrap the key in quotes; no leading/trailing whitespace
+- Restart the dev server after editing `.env.local`
 
-启动：
+Start it:
 
 ```bash
 npm run dev
 ```
 
-打开终端显示的 `Local:` 网址（通常是 `http://127.0.0.1:5173/`）。
+Open the `Local:` URL the terminal prints (usually `http://127.0.0.1:5173/`).
 
-## npm 脚本
+## npm scripts
 
-| 命令 | 作用 |
+| Command | What it does |
 |---|---|
-| `npm run dev` | 开发服务器（Yahoo 代理也在这里跑） |
-| `npm run build` | 生产构建到 `dist/` |
-| `npm run preview` | 预览生产构建（Yahoo 代理也跑，**不是真静态部署**） |
+| `npm run dev` | Dev server (the Yahoo proxy runs here too) |
+| `npm run build` | Production build into `dist/` |
+| `npm run preview` | Preview the prod build (proxy still active — **not a static deploy**) |
 | `npm run lint` | ESLint flat config |
-| `npm test` | 跑全部 161 个测试 |
-| `npm run test:watch` | 测试 watch 模式 |
+| `npm test` | Run the full 201-test suite |
+| `npm run test:watch` | Watch mode |
 
-## 怎么用
+## Using the dashboard
 
-1. 在 Ticker 框输股票代码（`NVDA` / `TSLA` / `AAPL` / ...）
-2. 点 `Run Full Analysis`，或在输入框按 `Enter`
-3. 五个阶段依次跑：
+1. Type a ticker (`NVDA` / `TSLA` / `AAPL` / ...) in the Ticker field
+2. Click `Run Full Analysis`, or press `Enter` in the input
+3. Five phases run in order:
 
    ```
-   Phase 1  Data           （Yahoo Finance，不调 Gemini）
-   Phase 2  News           （Gemini + Google Search）
-   Phase 3  Analysis + Risk  并发
+   Phase 1  Data             (Yahoo Finance — never goes through Gemini)
+   Phase 2  News             (Gemini + Google Search grounding)
+   Phase 3  Analysis + Risk    in parallel
    Phase 4  Report v1
-   Phase 5  Verifier  → 必要时 Report v2 → 再 Verifier
+   Phase 5  Verifier  → optional Report v2 → Verifier again
    ```
 
-4. 运行中按 `Esc` 或点 X 按钮可以随时取消整个 workflow
-5. 同一个 ticker 12 分钟内重跑会命中 Gemini 缓存，行情则在 90 秒内复用 Yahoo 响应。日志里命中缓存的行末标 `(cached)`
+4. Press `Esc` or click the X button to cancel a running workflow at any time
+5. **Click any agent card in Agent Controls** to open its detail modal
+   (Data → full metrics + candlestick chart + volume; News → headlines +
+   sentiment; Verifier → issue list with severities; etc.)
+6. Re-running the same ticker within 12 minutes hits the Gemini cache;
+   market data reuses the Yahoo response within 90 seconds. Cache hits
+   are tagged `(cached)` in the execution log.
 
-## ⚠️ 部署说明
+## What each panel shows
 
-**这个项目目前只能在 `npm run dev` 或 `npm run preview` 下跑。**
+- **Topbar** — status pill that distinguishes phases (`Verifying report` /
+  `Revising report (1 of 1)` / `Verifying revised report` / `Running 2 agents in parallel`)
+- **Agent Controls** — six agent cards. Color reflects run-state (green =
+  done, red = failed, glow = active). **Clicking opens the detail modal**
+- **Workflow** — five phase cells with an x-axis flow. Phase 3 stacks
+  Analysis + Risk as two sub-cards to make concurrency visible. Phase 5
+  carries a sub-state badge (v1 / revise / v2)
+- **Financial Metrics** — 16 metric cards covering quote, valuation,
+  profitability, earnings cycle, and analyst views, plus the sentiment bar
+- **Price Trend** — real candlestick (OHLC) chart with volume sub-pane,
+  latest-close reference line, and locale-formatted date ticks
+- **Agent Findings** — news headlines, analysis (valuation/growth/margin/trend),
+  risk level + risks/opportunities columns
+- **Report** — title, recommendation chip, thesis paragraph, bullets,
+  Verifier strip, and grounding sources
+- **Logs** — last 40 execution log entries
 
-页面通过 `/api/market-chart/...` 和 `/api/market-summary/...` 拿行情数据，
-这两个路由由 [`server/yahooProxy.js`](server/yahooProxy.js) 注册到 Vite 的
-dev/preview server。**生产构建 `dist/` 是纯静态的，没有 `/api/*` 路由**，
-直接传到 Netlify / Vercel / GitHub Pages 上跑会全部 404。
+## ⚠️ Deployment caveat
 
-如果要真正部署，需要把 `server/yahooProxy.js` 的代理逻辑迁到一个真后端
-（Express / Fastify / Cloudflare Worker 都行 —— 它已经被独立成一个文件）。
+**This project currently only runs under `npm run dev` or `npm run preview`.**
 
-## 常见问题
+The page hits `/api/market-chart/...` and `/api/market-summary/...`. Those
+routes are registered by [`server/yahooProxy.js`](server/yahooProxy.js)
+against Vite's dev/preview servers. **A bare `dist/` static deploy has no
+`/api/*` routes** — it would 404 every market-data request on Netlify,
+Vercel, GitHub Pages, etc.
+
+For a real deploy, lift the Yahoo proxy logic in `server/yahooProxy.js`
+into a backend of your choice (Express / Fastify / Cloudflare Worker —
+the file is already factored out for this).
+
+## Troubleshooting
 
 **Gemini API key not valid**
-- 检查 `.env.local` 里 key 是否复制完整，前后无空格无引号
-- 改完文件后必须重启 dev server (`Ctrl+C` 再 `npm run dev`)
+- Verify the key is copied in full with no quotes, no whitespace
+- Restart the dev server after edits (`Ctrl+C` then `npm run dev`)
 
-**页面没更新**
-- `Ctrl + F5` 硬刷新，或重启 dev server
+**Gemini quota exhausted / `Quota exceeded ... limit: 0`**
+- `limit: 0` means the API key has **no free-tier allowance** for that
+  model (not "used it up" — it was zero from the start)
+- Try a different model in this order:
+  1. `VITE_GEMINI_MODEL=gemini-2.0-flash` (drop-in compatible with 2.5-flash)
+  2. `VITE_GEMINI_MODEL=gemini-2.0-flash-lite` (different quota pool)
+  3. `VITE_GEMINI_MODEL=gemini-1.5-flash` + `VITE_GEMINI_USE_GOOGLE_SEARCH=false`
+     (1.5 uses an older tool-format that's incompatible with our `google_search` field)
+- Or generate a fresh key at [aistudio.google.com](https://aistudio.google.com/),
+  ideally from a Google account that hasn't been linked to billing
+- Restart after editing — the cache is namespaced by model so switching
+  doesn't pollute previous results
 
-**端口不是 5173**
-- 5173 被占用时 Vite 会自动换。以终端显示的 `Local:` 网址为准
+**Page doesn't update**
+- `Ctrl+F5` to hard-reload, or restart the dev server
 
-**`npm install` 失败**
-- 确认在项目根目录，确认网络正常
-- Node 18+ 必需（`node --version`）
+**Port is not 5173**
+- If 5173 is taken, Vite picks the next free port — use whatever the
+  terminal's `Local:` line shows
 
-## 项目结构
+**`npm install` fails**
+- Confirm you're in the project root and have network access
+- Node 18+ is required (`node --version`)
+
+## Project structure
 
 ```
 src/
-  App.jsx                 React 布局壳，~140 行，业务逻辑全在 hook 里
-  hooks/useAgentWorkflow.js   工作流编排（state、五阶段流水线、abort）
+  App.jsx                       React layout shell (~140 lines; all business logic in the hook)
+  main.jsx                      Entry, wraps the tree in <ErrorBoundary>
+  constants.js                  UI constants (chip palette, agent icons, phase definitions)
+  hooks/
+    useAgentWorkflow.js         Workflow controller (state, phase pipeline, abort, cache)
   services/
-    agentApi/             prompts、Gemini 客户端、agent 调度
-    marketData/           Yahoo 响应解析 + formatter
-    cache.js              sessionStorage 缓存（Gemini 12min / 行情 90s）
-  components/             各面板，全部 React.memo 化
+    cache.js                    sessionStorage cache (Gemini 12min / market 90s)
+    agentApi/
+      definitions.js            Agent metadata + ticker validation
+      parseJson.js              Extract JSON from LLM output (tolerates fences + prose)
+      geminiClient.js           Gemini HTTP client (retry + exponential backoff + Retry-After)
+      prompts.js                Six prompt templates + context summarization
+      runner.js                 runAgent dispatcher
+      types.js                  JSDoc @typedef definitions
+    marketData/
+      formatters.js             Five number formatters
+      yahooParsers.js           Yahoo-response parsers (analyst, eps, cashflow, ...)
+      index.js                  fetchMarketData orchestrator
+  components/                   All wrapped in React.memo
+    Topbar / CommandStrip / ErrorBanner /
+    AgentControls / WorkflowTrack /
+    MetricsPanel / FindingsPanel / TrendPanel / LogPanel / ReportPanel /
+    AgentDetailModal / PriceChart / Chip / SentimentBar / ErrorBoundary /
+    statusPill.js
 server/
-  yahooProxy.js           Yahoo 代理（带 in-flight dedup + crumb mutex + 超时）
-tests/                    161 个测试，目录结构镜像 src/
+  yahooProxy.js                 Yahoo proxy (in-flight dedup + crumb mutex + 15s timeout)
+docs/
+  index.html                    Visual project tour (open in any browser)
+  architecture.md               Deep architecture reference
+tests/                          201 tests; directory mirrors src/
 ```
 
-更深的内容看 [`docs/architecture.md`](docs/architecture.md)。
+For more depth, see [`docs/architecture.md`](docs/architecture.md) and
+[`docs/index.html`](docs/index.html).
