@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   BarChart3,
@@ -35,6 +35,40 @@ const metricItems = [
   ['debtToEquity', 'Debt / Equity']
 ];
 
+const RECOMMENDATION_CHIP = {
+  Buy: 'chip-buy',
+  Hold: 'chip-hold',
+  Watch: 'chip-watch',
+  Avoid: 'chip-avoid'
+};
+
+const RISK_CHIP = {
+  Low: 'chip-low',
+  Moderate: 'chip-moderate',
+  Elevated: 'chip-elevated',
+  High: 'chip-high'
+};
+
+const Chip = ({ value, classMap, fallback = 'Not rated' }) => {
+  const display = value || fallback;
+  const variant = classMap[display] || 'chip-neutral';
+  return <span className={`chip ${variant}`}>{display}</span>;
+};
+
+const SentimentBar = ({ score }) => {
+  if (score === undefined || score === null) return <strong>--</strong>;
+  const clamped = Math.max(0, Math.min(100, score));
+  const tone = clamped >= 65 ? 'pos' : clamped >= 35 ? 'neu' : 'neg';
+  return (
+    <div className="sentiment-row" aria-label={`Sentiment ${clamped} out of 100`}>
+      <div className="sentiment-bar">
+        <div className={`sentiment-fill sentiment-${tone}`} style={{ width: `${clamped}%` }} />
+      </div>
+      <strong>{clamped}</strong>
+    </div>
+  );
+};
+
 function App() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
   const wf = useAgentWorkflow(DEFAULT_SYMBOL);
@@ -51,6 +85,18 @@ function App() {
     else wf.reset(symbol);
   };
 
+  const wfRef = useRef(wf);
+  wfRef.current = wf;
+  useEffect(() => {
+    const handler = (event) => {
+      if (event.key === 'Escape' && wfRef.current.isRunning) {
+        wfRef.current.cancel();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -60,7 +106,13 @@ function App() {
         </div>
         <div className="status-pill">
           <span className={wf.isRunning ? 'pulse-dot running' : 'pulse-dot'} />
-          {wf.isRunning ? 'Agents running' : 'Ready'}
+          {!wf.isRunning
+            ? 'Ready'
+            : wf.activeAgents.length > 1
+              ? `Running ${wf.activeAgents.length} agents in parallel`
+              : wf.activeAgents.length === 1
+                ? `Running ${agentDefinitions.find((a) => a.id === wf.activeAgents[0])?.label ?? 'agent'}`
+                : 'Wrapping up'}
         </div>
       </header>
 
@@ -72,9 +124,14 @@ function App() {
             <input
               value={symbol}
               onChange={(event) => setSymbol(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !wf.isRunning) {
+                  wf.runWorkflow(symbol);
+                }
+              }}
               placeholder="AAPL, TSLA, NVDA"
               maxLength={8}
-              aria-label="Stock ticker"
+              aria-label="Stock ticker (press Enter to run full analysis)"
             />
           </div>
         </label>
@@ -173,7 +230,7 @@ function App() {
         <div className="metrics-panel">
           <div className="panel-heading">
             <h2>Financial Metrics</h2>
-            <span>{company.recommendation}</span>
+            <Chip value={company.recommendation} classMap={RECOMMENDATION_CHIP} />
           </div>
           <div className="metric-grid">
             {metricItems.map(([key, label]) => (
@@ -184,11 +241,7 @@ function App() {
             ))}
             <div className="metric-card sentiment">
               <span>Sentiment</span>
-              <strong>
-                {wf.results.news?.sentimentScore !== undefined
-                  ? `${wf.results.news.sentimentScore}/100`
-                  : '--'}
-              </strong>
+              <SentimentBar score={wf.results.news?.sentimentScore} />
             </div>
           </div>
         </div>
@@ -228,7 +281,10 @@ function App() {
 
             {wf.results.risk?.riskLevel && (
               <section className="finding-block risk">
-                <h3>Risks &amp; Opportunities <small>{wf.results.risk.riskLevel}</small></h3>
+                <h3>
+                  Risks &amp; Opportunities{' '}
+                  <Chip value={wf.results.risk.riskLevel} classMap={RISK_CHIP} fallback="" />
+                </h3>
                 <div className="risk-cols">
                   <div>
                     <strong>Risks</strong>
@@ -307,7 +363,7 @@ function App() {
                 <Sparkles size={20} aria-hidden="true" />
                 <div>
                   <h3>{wf.results.report.title}</h3>
-                  <span>{wf.results.report.recommendation}</span>
+                  <Chip value={wf.results.report.recommendation} classMap={RECOMMENDATION_CHIP} />
                 </div>
               </div>
               <p>{wf.results.report.thesis}</p>
@@ -333,7 +389,7 @@ function App() {
                 <LineChart size={20} aria-hidden="true" />
                 <div>
                   <h3>{company.name}</h3>
-                  <span>{company.recommendation}</span>
+                  <Chip value={company.recommendation} classMap={RECOMMENDATION_CHIP} />
                 </div>
               </div>
               <p>{company.thesis}</p>

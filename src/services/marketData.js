@@ -34,7 +34,7 @@ export const fetchMarketData = async (symbol, signal) => {
   const normalizedSymbol = symbol.trim().toUpperCase();
   const key = cacheKey('market', normalizedSymbol);
   const cached = cacheGet(key, TTL.market);
-  if (cached) return cached;
+  if (cached) return { ...cached, __cached: true };
 
   const response = await fetch(`/api/market-chart/${encodeURIComponent(normalizedSymbol)}`, { signal });
   const data = await response.json();
@@ -88,5 +88,5 @@ export const fetchMarketData = async (symbol, signal) => {
   };
 
   cacheSet(key, payload);
-  return payload;
+  return { ...payload, __cached: false };
 };

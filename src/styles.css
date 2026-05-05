@@ -681,6 +681,97 @@ h3 {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot.running {
+    animation: none;
+  }
+  .sentiment-fill,
+  .bar {
+    transition: none;
+  }
+}
+
+span.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 11px;
+  border-radius: 999px;
+  background: #f0eee9;
+  color: #4a4742;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+span.chip.chip-buy,
+span.chip.chip-low {
+  background: #e3f5ec;
+  color: #1d8f7a;
+}
+
+span.chip.chip-hold,
+span.chip.chip-moderate {
+  background: #fdf3df;
+  color: #8a5612;
+}
+
+span.chip.chip-watch,
+span.chip.chip-elevated {
+  background: #ffe2c9;
+  color: #a8590f;
+}
+
+span.chip.chip-avoid,
+span.chip.chip-high {
+  background: #fde0e3;
+  color: #a52f39;
+}
+
+.report-title span.chip {
+  margin-top: 4px;
+}
+
+.sentiment-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sentiment-bar {
+  flex: 1;
+  height: 10px;
+  background: #ede9e0;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.sentiment-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease-out;
+}
+
+.sentiment-pos {
+  background: linear-gradient(90deg, #1d8f7a, #6e7f2d);
+}
+
+.sentiment-neu {
+  background: linear-gradient(90deg, #d8a13a, #b56c12);
+}
+
+.sentiment-neg {
+  background: linear-gradient(90deg, #c74751, #a52f39);
+}
+
+.sentiment-row strong {
+  font-size: 1.1rem;
+  font-variant-numeric: tabular-nums;
+  min-width: 28px;
+  text-align: right;
+}
+
 @media (max-width: 1120px) {
   .workspace-grid {
     grid-template-columns: 300px 1fr;

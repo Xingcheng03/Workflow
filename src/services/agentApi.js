@@ -139,7 +139,7 @@ export const callGemini = async (prompt, signal) => {
   const { apiKey, model, useGoogleSearch } = getGeminiConfig();
   const key = cacheKey('gemini', model, useGoogleSearch ? 'g' : 'j', hashString(prompt));
   const cached = cacheGet(key, TTL.gemini);
-  if (cached) return cached;
+  if (cached) return { ...cached, __cached: true };
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
@@ -203,7 +203,7 @@ export const callGemini = async (prompt, signal) => {
   }
 
   if (result.json) cacheSet(key, result);
-  return result;
+  return { ...result, __cached: false };
 };
 
 const plainTextPayload = (agentId, symbol, text) => {
@@ -350,8 +350,8 @@ export const runAgent = async (agentId, symbol, emitLog, context = {}, signal) =
   // Data Agent intentionally bypasses Gemini — prices must come from a verified source.
   if (agentId === 'data') {
     emitLog(`${agent.label} started for ${resolvedSymbol}. Calling live market chart API...`);
-    const marketPayload = await fetchMarketData(resolvedSymbol, signal);
-    emitLog(`${agent.label} loaded live price and intraday chart data.`);
+    const { __cached, ...marketPayload } = await fetchMarketData(resolvedSymbol, signal);
+    emitLog(`${agent.label} loaded live price and intraday chart data${__cached ? ' (cached)' : ''}.`);
 
     return {
       symbol: marketPayload.company.symbol,
@@ -361,8 +361,8 @@ export const runAgent = async (agentId, symbol, emitLog, context = {}, signal) =
 
   emitLog(`${agent.label} started for ${resolvedSymbol}. Calling Gemini API...`);
 
-  const { json, text, sources } = await callGemini(prompts[agentId](resolvedSymbol, context), signal);
-  emitLog(`${agent.label} received Gemini response.`);
+  const { json, text, sources, __cached } = await callGemini(prompts[agentId](resolvedSymbol, context), signal);
+  emitLog(`${agent.label} received Gemini response${__cached ? ' (cached)' : ''}.`);
 
   // Defensive: if Gemini still wraps report inside a "report" field, unwrap it.
   let payload = json;
