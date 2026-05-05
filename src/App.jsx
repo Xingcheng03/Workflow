@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   Activity,
   BarChart3,
+  CheckCircle2,
   FileText,
   LineChart,
   Newspaper,
@@ -22,7 +23,26 @@ const icons = {
   news: Newspaper,
   analysis: BarChart3,
   risk: ShieldAlert,
-  report: FileText
+  report: FileText,
+  verifier: CheckCircle2
+};
+
+const VERIFIER_CHIP = {
+  pass: 'chip-low',
+  warn: 'chip-watch',
+  fail: 'chip-avoid'
+};
+
+const VERIFIER_LABEL = {
+  pass: 'Verified',
+  warn: 'Warnings',
+  fail: 'Issues found'
+};
+
+const PHASE_PILL_TEXT = {
+  'verify-v1': 'Verifying report',
+  'revise': 'Revising report (1 of 1)',
+  'verify-v2': 'Verifying revised report'
 };
 
 const metricItems = [
@@ -32,7 +52,10 @@ const metricItems = [
   ['peRatio', 'P/E Ratio'],
   ['revenueGrowth', 'Revenue Growth'],
   ['profitMargin', 'Profit Margin'],
-  ['debtToEquity', 'Debt / Equity']
+  ['debtToEquity', 'Debt / Equity'],
+  ['freeCashFlow', 'Free Cash Flow'],
+  ['nextEarningsDate', 'Next Earnings'],
+  ['analystTargetMean', 'Analyst Target']
 ];
 
 const RECOMMENDATION_CHIP = {
@@ -75,7 +98,10 @@ function App() {
 
   const company = wf.results.data?.company || createCompanyShell(symbol);
   const knownSymbol = company.symbol;
-  const timeline = wf.results.data?.trend || [];
+  const history = wf.results.data?.history || [];
+  const intraday = wf.results.data?.trend || [];
+  const timeline = history.length > 0 ? history : intraday;
+  const timelineLabel = history.length > 0 ? '6-month daily' : 'Intraday';
   const newsHeadlines = wf.results.news?.news || [];
   const riskRisks = wf.results.risk?.risks || [];
   const riskOpportunities = wf.results.risk?.opportunities || [];
@@ -108,11 +134,13 @@ function App() {
           <span className={wf.isRunning ? 'pulse-dot running' : 'pulse-dot'} />
           {!wf.isRunning
             ? 'Ready'
-            : wf.activeAgents.length > 1
-              ? `Running ${wf.activeAgents.length} agents in parallel`
-              : wf.activeAgents.length === 1
-                ? `Running ${agentDefinitions.find((a) => a.id === wf.activeAgents[0])?.label ?? 'agent'}`
-                : 'Wrapping up'}
+            : PHASE_PILL_TEXT[wf.workflowPhase]
+              ? PHASE_PILL_TEXT[wf.workflowPhase]
+              : wf.activeAgents.length > 1
+                ? `Running ${wf.activeAgents.length} agents in parallel`
+                : wf.activeAgents.length === 1
+                  ? `Running ${agentDefinitions.find((a) => a.id === wf.activeAgents[0])?.label ?? 'agent'}`
+                  : 'Wrapping up'}
         </div>
       </header>
 
@@ -173,7 +201,7 @@ function App() {
           <div className="panel-heading">
             <h2>Agent Controls</h2>
             <span>
-              {wf.completedAgents.length}/5 complete
+              {wf.completedAgents.length}/{agentDefinitions.length} complete
               {wf.failedAgents.length > 0 ? ` · ${wf.failedAgents.length} failed` : ''}
             </span>
           </div>
@@ -183,14 +211,21 @@ function App() {
               const isActive = wf.activeAgents.includes(agent.id);
               const isDone = wf.completedAgents.includes(agent.id);
               const isFailed = wf.failedAgents.includes(agent.id);
+              const verifierBlocked = agent.id === 'verifier' && !wf.results.report?.title;
+              const upstreamMissing = agent.id !== 'data' && !wf.results.data?.metrics?.price;
+              const buttonTitle = verifierBlocked
+                ? 'Run Report Agent first — Verifier checks an existing report'
+                : upstreamMissing
+                  ? `Run ${agent.label} (no Data context yet — output will be limited)`
+                  : `Run ${agent.label}`;
               return (
                 <button
                   key={agent.id}
                   className={`agent-button ${isActive ? 'active' : ''} ${isDone ? 'done' : ''} ${isFailed ? 'failed' : ''}`}
                   onClick={() => wf.runAgent(agent.id, symbol)}
-                  disabled={wf.isRunning}
+                  disabled={wf.isRunning || verifierBlocked}
                   style={{ '--agent-accent': agent.accent }}
-                  title={`Run ${agent.label}`}
+                  title={buttonTitle}
                 >
                   <span className="agent-icon">
                     <Icon size={20} aria-hidden="true" />
@@ -274,6 +309,7 @@ function App() {
                     {wf.results.analysis.valuation && <li><b>Valuation:</b> {wf.results.analysis.valuation}</li>}
                     {wf.results.analysis.growthView && <li><b>Growth:</b> {wf.results.analysis.growthView}</li>}
                     {wf.results.analysis.marginView && <li><b>Margins:</b> {wf.results.analysis.marginView}</li>}
+                    {wf.results.analysis.trendView && <li><b>Trend:</b> {wf.results.analysis.trendView}</li>}
                   </ul>
                   {wf.results.analysis.analysisSummary && <p>{wf.results.analysis.analysisSummary}</p>}
                 </section>
@@ -311,8 +347,15 @@ function App() {
         <div className="trend-panel">
           <div className="panel-heading">
             <h2>Price Trend</h2>
-            <span>{timeline.length ? `${timeline.length} points` : 'Live chart'}</span>
+            <span>{timeline.length ? `${timelineLabel} · ${timeline.length} points` : 'Live chart'}</span>
           </div>
+          {wf.results.data?.metrics?.returnSixMonth && wf.results.data.metrics.returnSixMonth !== 'not provided' && (
+            <ul className="trend-stats">
+              <li><b>6mo return:</b> {wf.results.data.metrics.returnSixMonth}</li>
+              <li><b>1mo return:</b> {wf.results.data.metrics.returnOneMonth}</li>
+              <li><b>From high:</b> {wf.results.data.metrics.drawdownFromHigh}</li>
+            </ul>
+          )}
           <div className="trend-bars" role="img" aria-label={`${timeline.length}-point price trend`}>
             {timeline.length ? (() => {
               const min = Math.min(...timeline);
@@ -372,6 +415,30 @@ function App() {
                   <li key={i}>{bullet}</li>
                 ))}
               </ul>
+              {wf.results.verifier?.status && (
+                <div className={`verifier-strip verifier-${wf.results.verifier.status}`}>
+                  <div className="verifier-strip-head">
+                    <CheckCircle2 size={16} aria-hidden="true" />
+                    <strong>Verification</strong>
+                    <Chip
+                      value={VERIFIER_LABEL[wf.results.verifier.status] || wf.results.verifier.status}
+                      classMap={VERIFIER_CHIP}
+                      fallback={wf.results.verifier.status}
+                    />
+                  </div>
+                  {Array.isArray(wf.results.verifier.issues) && wf.results.verifier.issues.length > 0 && (
+                    <ul className="verifier-issues">
+                      {wf.results.verifier.issues.map((issue, i) => (
+                        <li key={i} className={`verifier-issue verifier-${issue.severity || 'warning'}`}>
+                          <b>{issue.severity === 'blocking' ? '✗' : '⚠'} {issue.problem || 'Issue'}</b>
+                          {issue.claim && <em> — “{issue.claim}”</em>}
+                          {issue.suggestion && <span> → {issue.suggestion}</span>}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
               {wf.allSources.length > 0 && (
                 <div className="source-list">
                   <strong>Sources</strong>

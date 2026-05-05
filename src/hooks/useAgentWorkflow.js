@@ -6,7 +6,7 @@ import {
   validateSymbol
 } from '../services/agentApi';
 
-const FAN_OUT_AGENTS = ['news', 'analysis', 'risk'];
+const FAN_OUT_AGENTS = ['analysis', 'risk'];
 const SOURCE_AGENTS = ['news', 'analysis', 'risk', 'report'];
 const MAX_LOGS = 40;
 
@@ -26,6 +26,10 @@ export const useAgentWorkflow = (initialSymbol) => {
   const [results, setResults] = useState(() => initialResults(initialSymbol));
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState('');
+  // workflowPhase distinguishes Phase 5a/5b/5c from generic "Running [Agent]" so the
+  // UI status pill can show "Verifying report" / "Revising report (1 of 1)" /
+  // "Verifying revised report" instead of indistinguishable "Running Verifier Agent" twice.
+  const [workflowPhase, setWorkflowPhase] = useState(null);
   const abortRef = useRef(null);
   const logIdRef = useRef(0);
 
@@ -94,6 +98,7 @@ export const useAgentWorkflow = (initialSymbol) => {
   const finishRun = () => {
     setActiveAgents([]);
     setIsRunning(false);
+    setWorkflowPhase(null);
     abortRef.current = null;
   };
 
@@ -146,10 +151,10 @@ export const useAgentWorkflow = (initialSymbol) => {
 
     let firstFailure = null;
 
-    const runOne = async (agentId, context) => {
+    const runOne = async (agentId, context, options) => {
       if (signal.aborted) return { aborted: true, agentId };
       try {
-        const payload = await runAgent(agentId, validation.symbol, emitLog, context, signal);
+        const payload = await runAgent(agentId, validation.symbol, emitLog, context, signal, options);
         return { ok: true, agentId, payload };
       } catch (exception) {
         if (exception.name === 'AbortError' || signal.aborted) {
@@ -187,6 +192,13 @@ export const useAgentWorkflow = (initialSymbol) => {
     setResults(nextResults);
     if (signal.aborted) return exitAborted();
 
+    // Phase 2: News runs alone so its sentiment + headlines can ground Risk.
+    setActiveAgents(['news']);
+    applyOutcome(await runOne('news', nextResults));
+    setResults(nextResults);
+    if (signal.aborted) return exitAborted();
+
+    // Phase 3: Analysis and Risk fan out, both seeing Data + News context.
     setActiveAgents(FAN_OUT_AGENTS);
     const fanContext = nextResults;
     const fanOutcomes = await Promise.all(FAN_OUT_AGENTS.map((id) => runOne(id, fanContext)));
@@ -197,6 +209,60 @@ export const useAgentWorkflow = (initialSymbol) => {
     setActiveAgents(['report']);
     applyOutcome(await runOne('report', nextResults));
     setResults(nextResults);
+    if (signal.aborted) return exitAborted();
+
+    // Phase 5a: Verifier checks Report v1.
+    if (nextResults.report) {
+      setActiveAgents(['verifier']);
+      setWorkflowPhase('verify-v1');
+      applyOutcome(await runOne('verifier', nextResults));
+      setResults(nextResults);
+      if (signal.aborted) return exitAborted();
+
+      const v1 = nextResults.verifier;
+      const blockingIssues = (v1?.issues || []).filter((i) => i.severity === 'blocking');
+      const triggersRevision = v1?.status === 'fail' || blockingIssues.length > 0;
+
+      // Phase 5b/5c: At most one revision pass.
+      if (triggersRevision) {
+        emitLog(
+          `Verifier flagged ${blockingIssues.length} blocking issue(s). Asking Report Agent to revise.`
+        );
+        const previousReport = nextResults.report;
+        setActiveAgents(['report']);
+        setWorkflowPhase('revise');
+        const revisionOutcome = await runOne('report', nextResults, {
+          revisionFeedback: { previousReport, issues: blockingIssues }
+        });
+        applyOutcome(revisionOutcome);
+        setResults(nextResults);
+        if (signal.aborted) return exitAborted();
+
+        if (!revisionOutcome.ok) {
+          // Revision generation itself failed. Don't run Phase 5c — re-running
+          // Verifier on the unchanged v1 would just repeat the v1 issues. Keep
+          // v1 results visible with original Verifier output as final state.
+          emitLog('Report v2 generation failed; preserving v1 with original Verifier issues as final state.');
+        } else {
+          setActiveAgents(['verifier']);
+          setWorkflowPhase('verify-v2');
+          applyOutcome(await runOne('verifier', nextResults));
+          setResults(nextResults);
+          if (signal.aborted) return exitAborted();
+
+          const v2 = nextResults.verifier;
+          if (v2?.status === 'pass') {
+            emitLog('Verifier passed after one revision.');
+          } else {
+            emitLog(`Verifier still reports ${v2?.status || 'unknown'} after revision; surfacing remaining issues.`);
+          }
+        }
+      } else if (v1?.status === 'warn') {
+        emitLog(`Verifier passed with ${v1.issues?.length || 0} warning(s); not triggering revision.`);
+      } else {
+        emitLog('Verifier passed.');
+      }
+    }
 
     if (firstFailure) {
       setError(`Workflow finished with errors. First failure: ${firstFailure}`);
@@ -217,6 +283,7 @@ export const useAgentWorkflow = (initialSymbol) => {
     isRunning,
     error,
     allSources,
+    workflowPhase,
     runAgent: runOneAgent,
     runWorkflow,
     cancel,
