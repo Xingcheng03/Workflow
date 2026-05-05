@@ -1,4 +1,6 @@
-const formatCurrency = (value, currency = 'USD') => {
+import { TTL, cacheGet, cacheKey, cacheSet } from './cache';
+
+export const formatCurrency = (value, currency = 'USD') => {
   if (!Number.isFinite(value)) {
     return 'not verified';
   }
@@ -6,7 +8,7 @@ const formatCurrency = (value, currency = 'USD') => {
   return `${value.toFixed(2)} ${currency}`;
 };
 
-const formatChange = (latest, reference) => {
+export const formatChange = (latest, reference) => {
   if (!Number.isFinite(latest) || !Number.isFinite(reference)) {
     return 'not verified';
   }
@@ -17,7 +19,7 @@ const formatChange = (latest, reference) => {
   return `${sign}${diff.toFixed(2)} (${sign}${percent.toFixed(2)}%)`;
 };
 
-const compactTrend = (values, maxPoints = 28) => {
+export const compactTrend = (values, maxPoints = 28) => {
   const cleanValues = values.filter((value) => Number.isFinite(value));
 
   if (cleanValues.length <= maxPoints) {
@@ -28,9 +30,13 @@ const compactTrend = (values, maxPoints = 28) => {
   return Array.from({ length: maxPoints }, (_, index) => cleanValues[Math.round(index * step)]);
 };
 
-export const fetchMarketData = async (symbol) => {
+export const fetchMarketData = async (symbol, signal) => {
   const normalizedSymbol = symbol.trim().toUpperCase();
-  const response = await fetch(`/api/market-chart/${encodeURIComponent(normalizedSymbol)}`);
+  const key = cacheKey('market', normalizedSymbol);
+  const cached = cacheGet(key, TTL.market);
+  if (cached) return cached;
+
+  const response = await fetch(`/api/market-chart/${encodeURIComponent(normalizedSymbol)}`, { signal });
   const data = await response.json();
 
   if (!response.ok || data?.chart?.error) {
@@ -50,7 +56,7 @@ export const fetchMarketData = async (symbol) => {
   const referencePrice = meta?.regularMarketPrice ?? meta?.previousClose ?? meta?.chartPreviousClose;
   const currency = meta?.currency || 'USD';
 
-  return {
+  const payload = {
     company: {
       symbol: meta?.symbol || normalizedSymbol,
       name: meta?.longName || meta?.shortName || normalizedSymbol,
@@ -69,7 +75,7 @@ export const fetchMarketData = async (symbol) => {
       profitMargin: 'not provided by quote endpoint',
       debtToEquity: 'not provided by quote endpoint'
     },
-    trend: compactTrend(validPairs.map((point) => point.close)),
+    trend: compactTrend(validPairs.map((point) => point.close), 7),
     marketMeta: {
       source: 'Yahoo Finance chart API',
       regularMarketPrice: formatCurrency(meta?.regularMarketPrice, currency),
@@ -80,4 +86,7 @@ export const fetchMarketData = async (symbol) => {
       volume: meta?.regularMarketVolume?.toLocaleString?.() || 'not verified'
     }
   };
+
+  cacheSet(key, payload);
+  return payload;
 };

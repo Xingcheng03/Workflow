@@ -1,10 +1,24 @@
 import { fetchMarketData } from './marketData';
+import { TTL, cacheGet, cacheKey, cacheSet, hashString } from './cache';
 
 const pause = (duration = 550) => new Promise((resolve) => setTimeout(resolve, duration));
 
-const normalizeSymbol = (symbol) => {
-  const cleaned = symbol.trim().toUpperCase();
-  return cleaned || 'AAPL';
+const TICKER_RE = /^[A-Z.\-]{1,8}$/;
+
+const normalizeSymbol = (symbol) => (symbol || '').trim().toUpperCase();
+
+export const validateSymbol = (symbol) => {
+  const cleaned = normalizeSymbol(symbol);
+  if (!cleaned) {
+    return { ok: false, error: 'Enter a ticker symbol before running an agent.' };
+  }
+  if (!TICKER_RE.test(cleaned)) {
+    return {
+      ok: false,
+      error: `"${cleaned}" is not a valid ticker. Use 1-8 letters, dots, or dashes.`
+    };
+  }
+  return { ok: true, symbol: cleaned };
 };
 
 export const agentDefinitions = [
@@ -58,14 +72,14 @@ const extractText = (data) =>
     .join('')
     .trim() || '';
 
-const cleanJsonText = (text) =>
+export const cleanJsonText = (text) =>
   text
     .replace(/^```json\s*/i, '')
     .replace(/^```\s*/i, '')
     .replace(/```$/i, '')
     .trim();
 
-const parseJson = (text) => {
+export const parseJson = (text) => {
   const cleaned = cleanJsonText(text);
   const jsonStart = cleaned.indexOf('{');
   const jsonEnd = cleaned.lastIndexOf('}');
@@ -88,49 +102,82 @@ const extractSources = (data) => {
     .slice(0, 5);
 };
 
-const callGemini = async (prompt) => {
+const SYSTEM_INSTRUCTION =
+  'You are a careful finance workflow agent for a classroom dashboard. Return only valid JSON. Do not include markdown fences. If live market values are uncertain, say "not verified" instead of inventing exact numbers.';
+
+const RETRY_HINT =
+  '\n\nIMPORTANT: Your previous response was not valid JSON. Return only one JSON object, no markdown fences, no commentary.';
+
+const callGemini = async (prompt, signal) => {
   const { apiKey, model, useGoogleSearch } = getGeminiConfig();
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+  const key = cacheKey('gemini', model, useGoogleSearch ? 'g' : 'j', hashString(prompt));
+  const cached = cacheGet(key, TTL.gemini);
+  if (cached) return cached;
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+
+  const buildInit = (text) => ({
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'x-goog-api-key': apiKey
     },
     body: JSON.stringify({
-      system_instruction: {
-        parts: [
-          {
-            text:
-              'You are a careful finance workflow agent for a classroom dashboard. Return only valid JSON. Do not include markdown fences. If live market values are uncertain, say "not verified" instead of inventing exact numbers.'
-          }
-        ]
-      },
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: prompt }]
-        }
-      ],
+      system_instruction: { parts: [{ text: SYSTEM_INSTRUCTION }] },
+      contents: [{ role: 'user', parts: [{ text }] }],
       tools: useGoogleSearch ? [{ google_search: {} }] : undefined,
       generationConfig: {
         temperature: 0.25,
         ...(useGoogleSearch ? {} : { responseMimeType: 'application/json' })
       }
-    })
+    }),
+    signal
   });
 
-  const data = await response.json();
+  const tryOnce = async (init) => {
+    const response = await fetch(url, init);
+    const data = await response.json();
+    if (!response.ok) {
+      const err = new Error(`Gemini API error: ${data?.error?.message || response.statusText}`);
+      err.retryable = response.status === 429 || response.status >= 500;
+      throw err;
+    }
+    return data;
+  };
 
-  if (!response.ok) {
-    const message = data?.error?.message || response.statusText;
-    throw new Error(`Gemini API error: ${message}`);
-  }
+  const fetchWithBackoff = async (init) => {
+    try {
+      return await tryOnce(init);
+    } catch (error) {
+      if (error.name === 'AbortError') throw error;
+      if (error.retryable || error.name === 'TypeError') {
+        await pause(800);
+        return await tryOnce(init);
+      }
+      throw error;
+    }
+  };
 
-  return {
+  const parseResult = (data) => ({
     json: parseJson(extractText(data)),
     text: extractText(data),
     sources: extractSources(data)
-  };
+  });
+
+  let result = parseResult(await fetchWithBackoff(buildInit(prompt)));
+
+  if (!result.json && result.text) {
+    try {
+      const retryData = await fetchWithBackoff(buildInit(prompt + RETRY_HINT));
+      const retryResult = parseResult(retryData);
+      if (retryResult.json) result = retryResult;
+    } catch (error) {
+      if (error.name === 'AbortError') throw error;
+    }
+  }
+
+  cacheSet(key, result);
+  return result;
 };
 
 const plainTextPayload = (agentId, symbol, text) => {
@@ -197,10 +244,54 @@ const plainTextPayload = (agentId, symbol, text) => {
   };
 };
 
-const contextBlock = (context) =>
-  context && Object.keys(context).length
-    ? `\n\nCurrent dashboard context:\n${JSON.stringify(context, null, 2).slice(0, 6000)}`
-    : '';
+const summarizeContext = (context) => {
+  if (!context) return null;
+  const summary = {};
+
+  if (context.company) {
+    summary.company = {
+      symbol: context.company.symbol,
+      name: context.company.name,
+      sector: context.company.sector
+    };
+  }
+  if (context.metrics) {
+    summary.metrics = {
+      price: context.metrics.price,
+      change: context.metrics.change,
+      peRatio: context.metrics.peRatio
+    };
+  }
+  if (Array.isArray(context.trend)) {
+    summary.trend = context.trend;
+  }
+  if (Array.isArray(context.news)) {
+    summary.news = context.news;
+    summary.sentimentScore = context.sentimentScore;
+  }
+  if (context.valuation || context.analysisSummary) {
+    summary.analysis = {
+      valuation: context.valuation,
+      growthView: context.growthView,
+      marginView: context.marginView,
+      summary: context.analysisSummary
+    };
+  }
+  if (context.riskLevel) {
+    summary.risk = {
+      level: context.riskLevel,
+      risks: context.risks,
+      opportunities: context.opportunities
+    };
+  }
+
+  return Object.keys(summary).length ? summary : null;
+};
+
+const contextBlock = (context) => {
+  const summary = summarizeContext(context);
+  return summary ? `\n\nCurrent dashboard context:\n${JSON.stringify(summary, null, 2)}` : '';
+};
 
 const prompts = {
   data: (symbol, context) => `
@@ -273,13 +364,13 @@ export const createCompanyShell = (symbol) => ({
   thesis: 'Run an agent to generate live analysis from Gemini.'
 });
 
-export const runAgent = async (agentId, symbol, emitLog, context = {}) => {
+export const runAgent = async (agentId, symbol, emitLog, context = {}, signal) => {
   const resolvedSymbol = normalizeSymbol(symbol);
   const agent = agentDefinitions.find((item) => item.id === agentId);
 
   if (agentId === 'data') {
     emitLog(`${agent.label} started for ${resolvedSymbol}. Calling live market chart API...`);
-    const marketPayload = await fetchMarketData(resolvedSymbol);
+    const marketPayload = await fetchMarketData(resolvedSymbol, signal);
     emitLog(`${agent.label} loaded live price and intraday chart data.`);
 
     return {
@@ -291,7 +382,7 @@ export const runAgent = async (agentId, symbol, emitLog, context = {}) => {
   emitLog(`${agent.label} started for ${resolvedSymbol}. Calling Gemini API...`);
   await pause(120);
 
-  const { json, text, sources } = await callGemini(prompts[agentId](resolvedSymbol, context));
+  const { json, text, sources } = await callGemini(prompts[agentId](resolvedSymbol, context), signal);
   emitLog(`${agent.label} received Gemini response.`);
 
   return {

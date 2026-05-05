@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Activity,
   BarChart3,
@@ -9,9 +9,10 @@ import {
   RefreshCw,
   Search,
   ShieldAlert,
-  Sparkles
+  Sparkles,
+  X
 } from 'lucide-react';
-import { agentDefinitions, createCompanyShell, runAgent } from './services/agentApi';
+import { agentDefinitions, createCompanyShell, runAgent, validateSymbol } from './services/agentApi';
 
 const icons = {
   data: Activity,
@@ -33,12 +34,14 @@ const metricItems = [
 
 function App() {
   const [symbol, setSymbol] = useState('TSLA');
-  const [activeAgent, setActiveAgent] = useState(null);
+  const [activeAgents, setActiveAgents] = useState([]);
   const [completedAgents, setCompletedAgents] = useState([]);
+  const [failedAgents, setFailedAgents] = useState([]);
   const [logs, setLogs] = useState([]);
   const [results, setResults] = useState(() => ({ company: createCompanyShell('TSLA') }));
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState('');
+  const abortRef = useRef(null);
 
   const company = results.company || createCompanyShell(symbol);
   const knownSymbol = company.symbol;
@@ -59,64 +62,139 @@ function App() {
   };
 
   const executeAgent = async (agentId) => {
+    const validation = validateSymbol(symbol);
+    if (!validation.ok) {
+      setError(validation.error);
+      emitLog(`Error: ${validation.error}`);
+      return;
+    }
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
     setIsRunning(true);
-    setActiveAgent(agentId);
+    setActiveAgents([agentId]);
     setError('');
+    setFailedAgents((current) => current.filter((id) => id !== agentId));
     try {
-      const payload = await runAgent(agentId, symbol, emitLog, results);
+      const payload = await runAgent(agentId, validation.symbol, emitLog, results, signal);
       mergeResult(agentId, payload);
       setCompletedAgents((current) => (current.includes(agentId) ? current : [...current, agentId]));
       emitLog(`${agentDefinitions.find((agent) => agent.id === agentId).label} completed.`);
     } catch (exception) {
-      setError(exception.message);
-      emitLog(`Error: ${exception.message}`);
+      if (exception.name !== 'AbortError') {
+        setError(exception.message);
+        emitLog(`Error: ${exception.message}`);
+        setFailedAgents((current) => (current.includes(agentId) ? current : [...current, agentId]));
+        setCompletedAgents((current) => current.filter((id) => id !== agentId));
+      }
     } finally {
-      setActiveAgent(null);
+      setActiveAgents([]);
       setIsRunning(false);
+      abortRef.current = null;
     }
   };
 
   const executeWorkflow = async () => {
+    const validation = validateSymbol(symbol);
+    if (!validation.ok) {
+      setError(validation.error);
+      emitLog(`Error: ${validation.error}`);
+      return;
+    }
+    abortRef.current = new AbortController();
+    const signal = abortRef.current.signal;
     setIsRunning(true);
     setCompletedAgents([]);
+    setFailedAgents([]);
     setError('');
-    let nextResults = { company: createCompanyShell(symbol) };
+    let nextResults = { company: createCompanyShell(validation.symbol) };
     setResults(nextResults);
-    emitLog(`Full workflow queued for ${symbol.trim().toUpperCase() || 'AAPL'}.`);
+    emitLog(`Full workflow queued for ${validation.symbol}.`);
 
-    try {
-      for (const agent of agentDefinitions) {
-        setActiveAgent(agent.id);
-        const payload = await runAgent(agent.id, symbol, emitLog, nextResults);
+    let firstFailure = null;
+
+    const runOne = async (agentId, context) => {
+      if (signal.aborted) return { aborted: true, agentId };
+      try {
+        const payload = await runAgent(agentId, validation.symbol, emitLog, context, signal);
+        return { ok: true, agentId, payload };
+      } catch (exception) {
+        if (exception.name === 'AbortError' || signal.aborted) {
+          return { aborted: true, agentId };
+        }
+        return { ok: false, agentId, error: exception };
+      }
+    };
+
+    const applyOutcome = (outcome) => {
+      if (outcome.aborted) return;
+      if (outcome.ok) {
         nextResults = {
           ...nextResults,
-          ...payload,
+          ...outcome.payload,
           completedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          lastAgent: agent.id
+          lastAgent: outcome.agentId
         };
-        setResults(nextResults);
-        setCompletedAgents((current) => [...current, agent.id]);
+        setCompletedAgents((current) => [...current, outcome.agentId]);
+      } else {
+        const label = agentDefinitions.find((a) => a.id === outcome.agentId).label;
+        emitLog(`${label} failed: ${outcome.error.message}`);
+        setFailedAgents((current) => [...current, outcome.agentId]);
+        if (!firstFailure) firstFailure = outcome.error.message;
       }
-      emitLog('Full finance workflow completed.');
-    } catch (exception) {
-      setError(exception.message);
-      emitLog(`Error: ${exception.message}`);
-    } finally {
-      setActiveAgent(null);
-      setIsRunning(false);
+    };
+
+    setActiveAgents(['data']);
+    applyOutcome(await runOne('data', nextResults));
+    setResults(nextResults);
+
+    if (!signal.aborted) {
+      const fanOut = ['news', 'analysis', 'risk'];
+      setActiveAgents(fanOut);
+      const fanContext = nextResults;
+      const fanOutcomes = await Promise.all(fanOut.map((id) => runOne(id, fanContext)));
+      fanOutcomes.forEach(applyOutcome);
+      setResults(nextResults);
     }
+
+    if (!signal.aborted) {
+      setActiveAgents(['report']);
+      applyOutcome(await runOne('report', nextResults));
+      setResults(nextResults);
+    }
+
+    if (signal.aborted) {
+      emitLog('Workflow aborted by user.');
+    } else if (firstFailure) {
+      setError(`Workflow finished with errors. First failure: ${firstFailure}`);
+      emitLog('Workflow finished with errors. Downstream agents ran with reduced context.');
+    } else {
+      emitLog('Full finance workflow completed.');
+    }
+
+    setActiveAgents([]);
+    setIsRunning(false);
+    abortRef.current = null;
   };
 
   const resetBoard = () => {
     setCompletedAgents([]);
+    setFailedAgents([]);
     setLogs([]);
     setError('');
     setResults({ company: createCompanyShell(symbol) });
-    setActiveAgent(null);
+    setActiveAgents([]);
+  };
+
+  const cancelOrReset = () => {
+    if (isRunning && abortRef.current) {
+      abortRef.current.abort();
+    } else {
+      resetBoard();
+    }
   };
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" aria-busy={isRunning}>
       <header className="topbar">
         <div>
           <p className="eyebrow">Finance workflow cockpit</p>
@@ -152,8 +230,13 @@ function App() {
             <Play size={18} aria-hidden="true" />
             Run Full Analysis
           </button>
-          <button className="icon-btn" onClick={resetBoard} disabled={isRunning} title="Reset dashboard" aria-label="Reset dashboard">
-            <RefreshCw size={18} aria-hidden="true" />
+          <button
+            className="icon-btn"
+            onClick={cancelOrReset}
+            title={isRunning ? 'Cancel workflow' : 'Reset dashboard'}
+            aria-label={isRunning ? 'Cancel workflow' : 'Reset dashboard'}
+          >
+            {isRunning ? <X size={18} aria-hidden="true" /> : <RefreshCw size={18} aria-hidden="true" />}
           </button>
         </div>
       </section>
@@ -161,7 +244,7 @@ function App() {
       <section className="workspace-grid">
         {error && (
           <div className="error-panel" role="alert">
-            <strong>Gemini API error</strong>
+            <strong>Agent error</strong>
             <span>{error}</span>
           </div>
         )}
@@ -169,17 +252,21 @@ function App() {
         <div className="agent-panel">
           <div className="panel-heading">
             <h2>Agent Controls</h2>
-            <span>{completedAgents.length}/5 complete</span>
+            <span>
+              {completedAgents.length}/5 complete
+              {failedAgents.length > 0 ? ` · ${failedAgents.length} failed` : ''}
+            </span>
           </div>
           <div className="agent-list">
             {agentDefinitions.map((agent) => {
               const Icon = icons[agent.id];
-              const isActive = activeAgent === agent.id;
+              const isActive = activeAgents.includes(agent.id);
               const isDone = completedAgents.includes(agent.id);
+              const isFailed = failedAgents.includes(agent.id);
               return (
                 <button
                   key={agent.id}
-                  className={`agent-button ${isActive ? 'active' : ''} ${isDone ? 'done' : ''}`}
+                  className={`agent-button ${isActive ? 'active' : ''} ${isDone ? 'done' : ''} ${isFailed ? 'failed' : ''}`}
                   onClick={() => executeAgent(agent.id)}
                   disabled={isRunning}
                   style={{ '--agent-accent': agent.accent }}
@@ -206,7 +293,14 @@ function App() {
           <div className="workflow-track">
             {agentDefinitions.map((agent, index) => {
               const Icon = icons[agent.id];
-              const state = activeAgent === agent.id ? 'active' : completedAgents.includes(agent.id) ? 'done' : '';
+              const state =
+                activeAgents.includes(agent.id)
+                  ? 'active'
+                  : completedAgents.includes(agent.id)
+                    ? 'done'
+                    : failedAgents.includes(agent.id)
+                      ? 'failed'
+                      : '';
               return (
                 <div className="workflow-step-wrap" key={agent.id}>
                   <div className={`workflow-step ${state}`} style={{ '--agent-accent': agent.accent }}>
@@ -268,7 +362,7 @@ function App() {
             <h2>Execution Logs</h2>
             <span>{logs.length} entries</span>
           </div>
-          <div className="log-list">
+          <div className="log-list" role="log" aria-live="polite" aria-relevant="additions">
             {logs.length === 0 ? (
               <p className="empty-state">No agent activity yet.</p>
             ) : (

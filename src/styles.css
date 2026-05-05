@@ -348,6 +348,12 @@ h3 {
   background: #f5fbf8;
 }
 
+.agent-button.failed {
+  background: #fdf3f3;
+  border-color: #c74751;
+  box-shadow: inset 4px 0 0 #c74751;
+}
+
 .agent-icon {
   display: inline-grid;
   place-items: center;
@@ -404,6 +410,12 @@ h3 {
 .workflow-step.done {
   background: color-mix(in srgb, var(--agent-accent) 10%, white);
   border-color: var(--agent-accent);
+}
+
+.workflow-step.failed {
+  background: #fdf3f3;
+  border-color: #c74751;
+  color: #c74751;
 }
 
 .connector {
