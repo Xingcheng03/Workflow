@@ -18,15 +18,22 @@ export const cacheGet = (key, ttl) => {
     }
     return value;
   } catch {
+    sessionStorage.removeItem(key);
     return null;
   }
 };
 
 export const cacheSet = (key, value) => {
+  const payload = JSON.stringify({ ts: Date.now(), value });
   try {
-    sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), value }));
+    sessionStorage.setItem(key, payload);
   } catch {
-    // sessionStorage full or unavailable — silently skip
+    try {
+      sessionStorage.clear();
+      sessionStorage.setItem(key, payload);
+    } catch {
+      // sessionStorage genuinely unavailable; give up silently
+    }
   }
 };
 

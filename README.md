@@ -2,6 +2,8 @@
 
 这份文档给组员使用，说明如何在本地运行我们的 React + Gemini 金融 Agent 仪表板。
 
+> **最近的优化**：项目从最初的串行 demo 演进到了带并发执行、缓存、取消、容错重试的版本。
+
 ## 1. 准备环境
 
 电脑需要先安装 Node.js。
@@ -143,25 +145,26 @@ MSFT
 
 2. 点击 `Run Full Analysis`
 
-3. 系统会依次运行：
+3. 系统会按以下顺序运行（Phase 2 三个 agent 并发执行）：
 
 ```text
-Data Agent
-News Agent
-Analysis Agent
-Risk Agent
-Report Agent
+Phase 1: Data Agent       （拿真实行情，不调 Gemini）
+Phase 2: News Agent + Analysis Agent + Risk Agent  （并发）
+Phase 3: Report Agent     （综合所有结果）
 ```
 
-4. 页面会显示：
+4. 运行中可以点右上角的 X 按钮取消整个 workflow。
+
+5. 页面会显示：
 
 - 股票价格
 - 涨跌幅
 - 价格趋势图
-- 新闻总结
-- 风险分析
+- 新闻头条 / 估值分析 / 风险与机会（Agent Findings 面板）
 - 最终投资报告
-- Agent 执行日志
+- Agent 执行日志（最多保留 40 条）
+
+6. 同一个 ticker 在 12 分钟内重新跑会命中缓存（Gemini）/ 90 秒内命中行情缓存。
 
 ## 7. 每个 Agent 的作用
 
@@ -265,7 +268,7 @@ React 页面和 dashboard 逻辑。
 src/services/agentApi.js
 ```
 
-Agent workflow 和 Gemini API 调用逻辑。
+Agent workflow 和 Gemini API 调用逻辑（含重试、JSON 解析容错、缓存）。
 
 ```text
 src/services/marketData.js
@@ -274,10 +277,22 @@ src/services/marketData.js
 真实股票价格和曲线数据处理逻辑。
 
 ```text
+src/services/cache.js
+```
+
+sessionStorage 缓存层（行情 90 秒、Gemini 12 分钟）。
+
+```text
 vite.config.js
 ```
 
 本地市场数据代理接口，解决浏览器直接请求行情接口可能遇到的 CORS 问题。
+
+```text
+vitest.config.js
+```
+
+测试配置。运行 `npm test` 跑所有单测。
 
 ```text
 .env.local

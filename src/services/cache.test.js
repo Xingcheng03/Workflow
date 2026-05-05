@@ -45,8 +45,9 @@ describe('cacheGet / cacheSet', () => {
     expect(sessionStorage.getItem('finagent:test:stale')).toBeNull();
   });
 
-  it('returns null for corrupted JSON', () => {
+  it('returns null for corrupted JSON and removes the entry', () => {
     sessionStorage.setItem('finagent:test:bad', 'not-json');
     expect(cacheGet('finagent:test:bad', 60_000)).toBeNull();
+    expect(sessionStorage.getItem('finagent:test:bad')).toBeNull();
   });
 });

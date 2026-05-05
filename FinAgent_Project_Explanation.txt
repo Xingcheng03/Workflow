@@ -157,22 +157,22 @@ Workflow Diagram
 User Input
     |
     v
-Data Agent
+Data Agent (real Yahoo data, never Gemini)
     |
-    v
-News Agent
-    |
-    v
-Analysis Agent
-    |
-    v
-Risk Agent
-    |
-    v
-Report Agent
-    |
-    v
-Dashboard Output
+    +--> News Agent --------+
+    |                       |
+    +--> Analysis Agent ----+   (these three run concurrently)
+    |                       |
+    +--> Risk Agent --------+
+                            |
+                            v
+                     Report Agent
+                            |
+                            v
+                    Dashboard Output
+
+The user can cancel a running workflow at any time via the X button in the
+top-right command strip.
 
 
 Tools And Skills

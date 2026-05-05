@@ -1,11 +1,14 @@
 import { fetchMarketData } from './marketData';
 import { TTL, cacheGet, cacheKey, cacheSet, hashString } from './cache';
 
-const pause = (duration = 550) => new Promise((resolve) => setTimeout(resolve, duration));
+const RETRY_BACKOFF_MS = 800;
+const MAX_SOURCES = 5;
+
+const pause = (duration) => new Promise((resolve) => setTimeout(resolve, duration));
 
 const TICKER_RE = /^[A-Z.\-]{1,8}$/;
 
-const normalizeSymbol = (symbol) => (symbol || '').trim().toUpperCase();
+const normalizeSymbol = (symbol) => String(symbol ?? '').trim().toUpperCase();
 
 export const validateSymbol = (symbol) => {
   const cleaned = normalizeSymbol(symbol);
@@ -25,30 +28,35 @@ export const agentDefinitions = [
   {
     id: 'data',
     label: 'Data Agent',
+    shortLabel: 'Data',
     purpose: 'Market snapshot',
     accent: '#1d8f7a'
   },
   {
     id: 'news',
     label: 'News Agent',
+    shortLabel: 'News',
     purpose: 'Recent headlines',
     accent: '#c8791a'
   },
   {
     id: 'analysis',
     label: 'Analysis Agent',
+    shortLabel: 'Analysis',
     purpose: 'Ratios and trends',
     accent: '#5567d9'
   },
   {
     id: 'risk',
     label: 'Risk Agent',
+    shortLabel: 'Risk',
     purpose: 'Scenario review',
     accent: '#c74751'
   },
   {
     id: 'report',
     label: 'Report Agent',
+    shortLabel: 'Report',
     purpose: 'Final memo',
     accent: '#6e7f2d'
   }
@@ -79,15 +87,33 @@ export const cleanJsonText = (text) =>
     .replace(/```$/i, '')
     .trim();
 
+export const extractFirstObject = (text) => {
+  const start = text.indexOf('{');
+  if (start === -1) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\') { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return text.slice(start, i + 1);
+    }
+  }
+  return null;
+};
+
 export const parseJson = (text) => {
   const cleaned = cleanJsonText(text);
-  const jsonStart = cleaned.indexOf('{');
-  const jsonEnd = cleaned.lastIndexOf('}');
-  const jsonText = jsonStart >= 0 && jsonEnd > jsonStart ? cleaned.slice(jsonStart, jsonEnd + 1) : cleaned;
-
+  const candidate = extractFirstObject(cleaned) ?? cleaned;
   try {
-    return JSON.parse(jsonText);
-  } catch (error) {
+    return JSON.parse(candidate);
+  } catch {
     return null;
   }
 };
@@ -99,7 +125,7 @@ const extractSources = (data) => {
     .filter(Boolean)
     .map((web) => ({ title: web.title || web.uri, uri: web.uri }))
     .filter((source, index, all) => source.uri && all.findIndex((item) => item.uri === source.uri) === index)
-    .slice(0, 5);
+    .slice(0, MAX_SOURCES);
 };
 
 const SYSTEM_INSTRUCTION =
@@ -108,7 +134,8 @@ const SYSTEM_INSTRUCTION =
 const RETRY_HINT =
   '\n\nIMPORTANT: Your previous response was not valid JSON. Return only one JSON object, no markdown fences, no commentary.';
 
-const callGemini = async (prompt, signal) => {
+// Exported for tests; not part of the public API.
+export const callGemini = async (prompt, signal) => {
   const { apiKey, model, useGoogleSearch } = getGeminiConfig();
   const key = cacheKey('gemini', model, useGoogleSearch ? 'g' : 'j', hashString(prompt));
   const cached = cacheGet(key, TTL.gemini);
@@ -151,57 +178,35 @@ const callGemini = async (prompt, signal) => {
     } catch (error) {
       if (error.name === 'AbortError') throw error;
       if (error.retryable || error.name === 'TypeError') {
-        await pause(800);
+        await pause(RETRY_BACKOFF_MS);
         return await tryOnce(init);
       }
       throw error;
     }
   };
 
-  const parseResult = (data) => ({
-    json: parseJson(extractText(data)),
-    text: extractText(data),
-    sources: extractSources(data)
-  });
+  const parseResult = (data) => {
+    const text = extractText(data);
+    return {
+      json: parseJson(text),
+      text,
+      sources: extractSources(data)
+    };
+  };
 
   let result = parseResult(await fetchWithBackoff(buildInit(prompt)));
 
   if (!result.json && result.text) {
-    try {
-      const retryData = await fetchWithBackoff(buildInit(prompt + RETRY_HINT));
-      const retryResult = parseResult(retryData);
-      if (retryResult.json) result = retryResult;
-    } catch (error) {
-      if (error.name === 'AbortError') throw error;
-    }
+    const retryData = await fetchWithBackoff(buildInit(prompt + RETRY_HINT));
+    const retryResult = parseResult(retryData);
+    if (retryResult.json) result = retryResult;
   }
 
-  cacheSet(key, result);
+  if (result.json) cacheSet(key, result);
   return result;
 };
 
 const plainTextPayload = (agentId, symbol, text) => {
-  if (agentId === 'data') {
-    return {
-      company: {
-        symbol,
-        name: symbol,
-        sector: 'Generated by Gemini',
-        recommendation: 'Not rated',
-        thesis: text.slice(0, 260)
-      },
-      metrics: {
-        price: 'not verified',
-        change: 'not verified',
-        marketCap: 'not verified',
-        peRatio: 'not verified',
-        revenueGrowth: 'not verified',
-        profitMargin: 'not verified',
-        debtToEquity: 'not verified'
-      }
-    };
-  }
-
   if (agentId === 'news') {
     return {
       news: text
@@ -244,7 +249,8 @@ const plainTextPayload = (agentId, symbol, text) => {
   };
 };
 
-const summarizeContext = (context) => {
+// Exported for tests; not part of the public API.
+export const summarizeContext = (context) => {
   if (!context) return null;
   const summary = {};
 
@@ -294,29 +300,6 @@ const contextBlock = (context) => {
 };
 
 const prompts = {
-  data: (symbol, context) => `
-Analyze the public company or ticker "${symbol}" using current web information when available.
-Return compact valid JSON only. Do not use markdown. Do not add explanations outside JSON. Return this exact JSON shape:
-{
-  "company": {
-    "symbol": "string",
-    "name": "string",
-    "sector": "string",
-    "recommendation": "Buy | Hold | Watch | Avoid | Not rated",
-    "thesis": "one sentence"
-  },
-  "metrics": {
-    "price": "string, include currency or not verified",
-    "change": "string, daily/period change or not verified",
-    "marketCap": "string or not verified",
-    "peRatio": "string or not verified",
-    "revenueGrowth": "string or not verified",
-    "profitMargin": "string or not verified",
-    "debtToEquity": "string or not verified"
-  },
-  "trend": [number, number, number, number, number, number, number]
-}
-Use trend as a 7-point recent relative price trend if exact prices are available; otherwise use a normalized 7-point trend from 80 to 120 and mention uncertainty in thesis.${contextBlock(context)}`,
   news: (symbol, context) => `
 Research recent news for "${symbol}" and summarize what matters for investors.
 Return compact valid JSON only. Do not use markdown. Do not add explanations outside JSON. Return this exact JSON shape:
@@ -368,6 +351,7 @@ export const runAgent = async (agentId, symbol, emitLog, context = {}, signal) =
   const resolvedSymbol = normalizeSymbol(symbol);
   const agent = agentDefinitions.find((item) => item.id === agentId);
 
+  // Data Agent intentionally bypasses Gemini — prices must come from a verified source.
   if (agentId === 'data') {
     emitLog(`${agent.label} started for ${resolvedSymbol}. Calling live market chart API...`);
     const marketPayload = await fetchMarketData(resolvedSymbol, signal);
@@ -380,14 +364,13 @@ export const runAgent = async (agentId, symbol, emitLog, context = {}, signal) =
   }
 
   emitLog(`${agent.label} started for ${resolvedSymbol}. Calling Gemini API...`);
-  await pause(120);
 
   const { json, text, sources } = await callGemini(prompts[agentId](resolvedSymbol, context), signal);
   emitLog(`${agent.label} received Gemini response.`);
 
   return {
     ...(json || plainTextPayload(agentId, resolvedSymbol, text)),
-    sources,
+    [`${agentId}Sources`]: sources,
     rawText: json ? undefined : text,
     symbol: json?.company?.symbol || resolvedSymbol
   };
