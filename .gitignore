@@ -2,5 +2,10 @@ node_modules
 dist
 .vite
 .DS_Store
+.env
+.env.*
+!.env.example
 *.local
+.idea/
+.vscode/
 docs/plan/
