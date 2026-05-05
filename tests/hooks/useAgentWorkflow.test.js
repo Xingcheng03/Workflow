@@ -4,16 +4,16 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 // Mock runAgent so the test controls every agent's response. Other exports
 // (validateSymbol, createCompanyShell, agentDefinitions) keep their real
 // implementations because the hook depends on them.
-vi.mock('../services/agentApi', async () => {
-  const actual = await vi.importActual('../services/agentApi');
+vi.mock('../../src/services/agentApi', async () => {
+  const actual = await vi.importActual('../../src/services/agentApi');
   return {
     ...actual,
     runAgent: vi.fn()
   };
 });
 
-import { runAgent } from '../services/agentApi';
-import { useAgentWorkflow } from './useAgentWorkflow';
+import { agentDefinitions, runAgent } from '../../src/services/agentApi';
+import { useAgentWorkflow } from '../../src/hooks/useAgentWorkflow';
 
 const baseDataPayload = (symbol) => ({
   symbol,
@@ -205,6 +205,42 @@ describe('useAgentWorkflow — Verifier + revision loop', () => {
     expect(result.current.isRunning).toBe(false);
   });
 
+  it('case 7a: revision cycle does NOT duplicate report/verifier in completedAgents', async () => {
+    wireMocks(
+      { status: 'fail', issues: [{ severity: 'blocking', claim: 'x', problem: 'p', suggestion: 's' }] },
+      { status: 'pass', issues: [] }
+    );
+    const { result } = renderHook(() => useAgentWorkflow('NVDA'));
+    await act(async () => {
+      await result.current.runWorkflow('NVDA');
+    });
+
+    // Each agent should appear at most once in completedAgents even though
+    // report and verifier each ran twice (v1 + revision/v2).
+    const completed = result.current.completedAgents;
+    const counts = completed.reduce((m, id) => ((m[id] = (m[id] || 0) + 1), m), {});
+    expect(counts.report).toBe(1);
+    expect(counts.verifier).toBe(1);
+    expect(completed.length).toBe(agentDefinitions.length);
+  });
+
+  it('case 7b: report v2 failure removes report from completedAgents and adds it to failedAgents', async () => {
+    wireMocks(
+      { status: 'fail', issues: [{ severity: 'blocking', claim: 'x', problem: 'p', suggestion: 's' }] },
+      null,
+      'throw'
+    );
+    const { result } = renderHook(() => useAgentWorkflow('NVDA'));
+    await act(async () => {
+      await result.current.runWorkflow('NVDA');
+    });
+
+    // Report v1 succeeded then v2 threw — agent must end up in failedAgents,
+    // and must NOT remain in completedAgents (no contradictory dual-state).
+    expect(result.current.failedAgents).toContain('report');
+    expect(result.current.completedAgents).not.toContain('report');
+  });
+
   it('case 7: aborted Verifier does not crash workflow; revision NOT attempted on aborted result', async () => {
     runAgent.mockImplementation(async (agentId, symbol, _emitLog, _context, _signal, _options) => {
       if (agentId === 'data') return baseDataPayload(symbol);
@@ -227,5 +263,95 @@ describe('useAgentWorkflow — Verifier + revision loop', () => {
     expect(countCalls('report', true)).toBe(0);
     expect(countCalls('verifier')).toBe(1);
     expect(result.current.isRunning).toBe(false);
+  });
+
+  it('case 8: v2 verifier aborts — workflow exits cleanly without claiming v2 passed', async () => {
+    // v1 fails (forcing revision), v2 report succeeds, v2 verifier aborts.
+    let verifierCallCount = 0;
+    runAgent.mockImplementation(async (agentId, symbol, _emitLog, _context, _signal, options) => {
+      if (agentId === 'data') return baseDataPayload(symbol);
+      if (agentId === 'news') return baseNewsPayload(symbol);
+      if (agentId === 'analysis') return baseAnalysisPayload(symbol);
+      if (agentId === 'risk') return baseRiskPayload(symbol);
+      if (agentId === 'report') return reportPayload(symbol, !!options?.revisionFeedback);
+      if (agentId === 'verifier') {
+        verifierCallCount += 1;
+        if (verifierCallCount === 1) {
+          return verifierPayload(symbol, 'fail', [
+            { severity: 'blocking', claim: 'x', problem: 'p', suggestion: 's' }
+          ]);
+        }
+        const err = new Error('Aborted on v2');
+        err.name = 'AbortError';
+        throw err;
+      }
+      throw new Error(`Unmocked agent: ${agentId}`);
+    });
+    const { result } = renderHook(() => useAgentWorkflow('NVDA'));
+    await act(async () => {
+      await result.current.runWorkflow('NVDA');
+    });
+
+    // v2 verifier aborted, so verifier output in state is the v1 'fail'
+    // (untouched by the aborted v2). isRunning must be cleared either way.
+    expect(result.current.isRunning).toBe(false);
+    expect(result.current.results.verifier.status).toBe('fail');
+    expect(countCalls('verifier')).toBe(2); // v1 succeeded + v2 attempted
+    expect(countCalls('report', true)).toBe(1);
+  });
+
+  it('case 9: a second runWorkflow call while one is in-flight is ignored (re-entry guard)', async () => {
+    // Make agents hang on a controllable promise so we can double-fire the
+    // workflow before any state has settled.
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    runAgent.mockImplementation(async (agentId, symbol) => {
+      await gate;
+      if (agentId === 'data') return baseDataPayload(symbol);
+      if (agentId === 'news') return baseNewsPayload(symbol);
+      if (agentId === 'analysis') return baseAnalysisPayload(symbol);
+      if (agentId === 'risk') return baseRiskPayload(symbol);
+      if (agentId === 'report') return reportPayload(symbol, false);
+      if (agentId === 'verifier') return verifierPayload(symbol, 'pass', []);
+      throw new Error(`Unmocked agent: ${agentId}`);
+    });
+    const { result } = renderHook(() => useAgentWorkflow('NVDA'));
+
+    // Kick off two parallel runs in the same synchronous tick. The second
+    // must short-circuit before runAgent('data') is even called.
+    await act(async () => {
+      const first = result.current.runWorkflow('NVDA');
+      result.current.runWorkflow('NVDA'); // should be a no-op
+      release();
+      await first;
+    });
+
+    // Data agent ran exactly once, proving the second call was rejected.
+    expect(countCalls('data')).toBe(1);
+  });
+
+  it('case 10: aborts the in-flight controller when the hook unmounts', async () => {
+    let capturedSignal = null;
+    let release;
+    const gate = new Promise((resolve) => { release = resolve; });
+    runAgent.mockImplementation(async (agentId, symbol, _emitLog, _context, signal) => {
+      capturedSignal = signal;
+      await gate;
+      return baseDataPayload(symbol);
+    });
+    const { result, unmount } = renderHook(() => useAgentWorkflow('NVDA'));
+
+    // Start a workflow without awaiting completion — leaves it mid-fetch.
+    act(() => { result.current.runWorkflow('NVDA'); });
+    expect(capturedSignal?.aborted).toBe(false);
+
+    unmount();
+
+    // Cleanup must abort the captured controller so the in-flight fetch
+    // sees signal.aborted and stops.
+    expect(capturedSignal?.aborted).toBe(true);
+
+    // Release the gate so the hanging promise resolves and Vitest can exit cleanly.
+    await act(async () => { release(); });
   });
 });

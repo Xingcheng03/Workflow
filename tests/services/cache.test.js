@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { cacheGet, cacheKey, cacheSet, hashString } from './cache';
+import { cacheGet, cacheKey, cacheSet, hashString } from '../../src/services/cache';
 
 afterEach(() => {
   sessionStorage.clear();

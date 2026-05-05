@@ -16,7 +16,7 @@ import {
   parseNetDebt,
   parseRecommendationTrend,
   parseRevenueGrowthRecent
-} from './marketData';
+} from '../../src/services/marketData';
 
 describe('formatCurrency', () => {
   it('formats finite numbers with two decimals', () => {
@@ -236,6 +236,24 @@ describe('parseEpsRevisions', () => {
       ]
     };
     expect(parseEpsRevisions(earningsTrend)).toBe('30d: 1 up / 12 down');
+  });
+
+  it('preserves a legit 0 in the canonical casing instead of falling through to fallback', () => {
+    // Both casings present; canonical "downLast30Days" is 0 — a legit zero,
+    // not "missing". It must NOT fall through to the lowercase fallback (5).
+    const earningsTrend = {
+      trend: [
+        {
+          period: '+1q',
+          epsRevisions: {
+            upLast30days: { raw: 3 },
+            downLast30Days: { raw: 0 },
+            downLast30days: { raw: 5 }
+          }
+        }
+      ]
+    };
+    expect(parseEpsRevisions(earningsTrend)).toBe('30d: 3 up / 0 down');
   });
 });
 

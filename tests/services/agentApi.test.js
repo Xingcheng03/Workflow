@@ -9,7 +9,7 @@ import {
   prompts,
   summarizeContext,
   validateSymbol
-} from './agentApi';
+} from '../../src/services/agentApi';
 
 describe('validateSymbol', () => {
   it('accepts a typical ticker', () => {
@@ -73,6 +73,14 @@ describe('parseJson', () => {
   it('returns null for unparseable input', () => {
     expect(parseJson('not actually json at all')).toBeNull();
     expect(parseJson('{"unclosed":')).toBeNull();
+  });
+
+  it('rejects parsed non-object values so callers can fall back to plain-text payload', () => {
+    // JSON.parse('42') succeeds, but a number is not a usable agent payload.
+    expect(parseJson('42')).toBeNull();
+    expect(parseJson('"just a string"')).toBeNull();
+    expect(parseJson('null')).toBeNull();
+    expect(parseJson('[1,2,3]')).toBeNull();
   });
 });
 
@@ -342,7 +350,7 @@ describe('runAgent verifier + revision integration', () => {
   });
 
   it('parses Verifier fail status with blocking issue', async () => {
-    const { runAgent } = await import('./agentApi');
+    const { runAgent } = await import('../../src/services/agentApi');
     const verifierResp =
       '{"status":"fail","issues":[{"severity":"blocking","claim":"PE 35","problem":"Not in DATA_METRICS","suggestion":"Use 20.50"}]}';
     global.fetch = vi.fn().mockResolvedValue(okResponse(verifierResp));
@@ -356,7 +364,7 @@ describe('runAgent verifier + revision integration', () => {
   });
 
   it('parses Verifier warn status without escalating', async () => {
-    const { runAgent } = await import('./agentApi');
+    const { runAgent } = await import('../../src/services/agentApi');
     const verifierResp =
       '{"status":"warn","issues":[{"severity":"warning","claim":"x","problem":"vague","suggestion":"clarify"}]}';
     global.fetch = vi.fn().mockResolvedValue(okResponse(verifierResp));
@@ -369,7 +377,7 @@ describe('runAgent verifier + revision integration', () => {
   });
 
   it('Verifier non-JSON output → falls back to a warn payload, not a thrown error', async () => {
-    const { runAgent } = await import('./agentApi');
+    const { runAgent } = await import('../../src/services/agentApi');
     global.fetch = vi.fn().mockResolvedValue(okResponse('plain text not JSON'));
     const result = await runAgent('verifier', 'NVDA', () => {}, {
       data: { metrics: {} },
@@ -380,7 +388,7 @@ describe('runAgent verifier + revision integration', () => {
   });
 
   it('Report with revisionFeedback uses reportRevision prompt (contains previous + issues)', async () => {
-    const { runAgent } = await import('./agentApi');
+    const { runAgent } = await import('../../src/services/agentApi');
     const revisedResp =
       '{"title":"Revised","recommendation":"Hold","thesis":"Fixed numbers from DATA","bullets":["a","b","c","d"]}';
     let capturedPromptText;
@@ -419,7 +427,7 @@ describe('runAgent verifier + revision integration', () => {
       capturedTools = JSON.parse(init.body).tools;
       return Promise.resolve(okResponse('{"status":"pass","issues":[]}'));
     });
-    const { runAgent } = await import('./agentApi');
+    const { runAgent } = await import('../../src/services/agentApi');
     await runAgent('verifier', 'NVDA', () => {}, {
       data: { metrics: {} },
       report: { title: 't' }
@@ -436,7 +444,7 @@ describe('runAgent verifier + revision integration', () => {
         okResponse('{"title":"R","recommendation":"Hold","thesis":"x","bullets":["a","b","c","d"]}')
       );
     });
-    const { runAgent } = await import('./agentApi');
+    const { runAgent } = await import('../../src/services/agentApi');
     await runAgent(
       'report',
       'NVDA',
@@ -457,13 +465,13 @@ describe('runAgent verifier + revision integration', () => {
         okResponse('{"title":"R","recommendation":"Hold","thesis":"x","bullets":["a","b","c","d"]}')
       );
     });
-    const { runAgent } = await import('./agentApi');
+    const { runAgent } = await import('../../src/services/agentApi');
     await runAgent('report', 'NVDA', () => {}, { data: { metrics: {} } });
     expect(capturedTools).toEqual([{ google_search: {} }]);
   });
 
   it('Report without revisionFeedback uses normal report prompt (no revision text)', async () => {
-    const { runAgent } = await import('./agentApi');
+    const { runAgent } = await import('../../src/services/agentApi');
     const reportResp = '{"title":"Fresh","recommendation":"Hold","thesis":"...","bullets":["a","b","c","d"]}';
     let capturedPromptText;
     global.fetch = vi.fn().mockImplementation((_url, init) => {
