@@ -1,15 +1,17 @@
 import { memo } from 'react';
 import { AGENT_ICONS } from '../constants.js';
 
+// Click an agent button → opens its detail modal (via onAgentClick).
+// Single-agent runs were removed: the only way to trigger work is the
+// top-level Run Full Analysis button. Each card still reflects the
+// agent's current run-state (active/done/failed) so the user can see
+// progress at a glance.
 export const AgentControls = memo(({
   agents,
   activeAgents,
   completedAgents,
   failedAgents,
-  isRunning,
-  hasReportTitle,
-  hasDataPrice,
-  onRunAgent
+  onAgentClick
 }) => (
   <div className="agent-panel">
     <div className="panel-heading">
@@ -25,21 +27,14 @@ export const AgentControls = memo(({
         const isActive = activeAgents.includes(agent.id);
         const isDone = completedAgents.includes(agent.id);
         const isFailed = failedAgents.includes(agent.id);
-        const verifierBlocked = agent.id === 'verifier' && !hasReportTitle;
-        const upstreamMissing = agent.id !== 'data' && !hasDataPrice;
-        const buttonTitle = verifierBlocked
-          ? 'Run Report Agent first — Verifier checks an existing report'
-          : upstreamMissing
-            ? `Run ${agent.label} (no Data context yet — output will be limited)`
-            : `Run ${agent.label}`;
         return (
           <button
             key={agent.id}
             className={`agent-button ${isActive ? 'active' : ''} ${isDone ? 'done' : ''} ${isFailed ? 'failed' : ''}`}
-            onClick={() => onRunAgent(agent.id)}
-            disabled={isRunning || verifierBlocked}
+            onClick={() => onAgentClick(agent.id)}
             style={{ '--agent-accent': agent.accent }}
-            title={buttonTitle}
+            title={`View ${agent.label} details`}
+            type="button"
           >
             <span className="agent-icon">
               <Icon size={20} aria-hidden="true" />

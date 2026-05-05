@@ -518,23 +518,106 @@ describe('callGemini', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
-  it('retries once on HTTP 500 then succeeds', async () => {
-    global.fetch = vi.fn()
-      .mockResolvedValueOnce(errorResponse(500, 'server error'))
-      .mockResolvedValueOnce(okResponse('{"ok":true}'));
-    const result = await callGemini('test prompt');
-    expect(result.json).toEqual({ ok: true });
-    expect(global.fetch).toHaveBeenCalledTimes(2);
-  }, 10_000);
+  it('retries on HTTP 500 then succeeds', async () => {
+    vi.useFakeTimers();
+    try {
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce(errorResponse(500, 'server error'))
+        .mockResolvedValueOnce(okResponse('{"ok":true}'));
+      const promise = callGemini('test prompt');
+      // Drain the backoff (max ≈ BASE_BACKOFF_MS * 1.25 ≈ 2.5s).
+      await vi.advanceTimersByTimeAsync(3_000);
+      const result = await promise;
+      expect(result.json).toEqual({ ok: true });
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
-  it('retries once on HTTP 429 then succeeds', async () => {
-    global.fetch = vi.fn()
-      .mockResolvedValueOnce(errorResponse(429, 'rate limit'))
-      .mockResolvedValueOnce(okResponse('{"ok":true}'));
-    const result = await callGemini('test prompt');
-    expect(result.json).toEqual({ ok: true });
-    expect(global.fetch).toHaveBeenCalledTimes(2);
-  }, 10_000);
+  it('retries on HTTP 429 then succeeds', async () => {
+    vi.useFakeTimers();
+    try {
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce(errorResponse(429, 'rate limit'))
+        .mockResolvedValueOnce(okResponse('{"ok":true}'));
+      const promise = callGemini('test prompt');
+      await vi.advanceTimersByTimeAsync(3_000);
+      const result = await promise;
+      expect(result.json).toEqual({ ok: true });
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('makes 3 attempts on persistent 503 ("model overloaded") before giving up', async () => {
+    vi.useFakeTimers();
+    try {
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce(errorResponse(503, 'model overloaded'))
+        .mockResolvedValueOnce(errorResponse(503, 'model overloaded'))
+        .mockResolvedValueOnce(errorResponse(503, 'model overloaded'));
+      const promise = callGemini('test prompt');
+      const settled = promise.catch((e) => e);
+      // Drain both backoff windows. Worst case: 2.5s + 5s = 7.5s.
+      await vi.advanceTimersByTimeAsync(10_000);
+      const error = await settled;
+      expect(error).toBeInstanceOf(Error);
+      expect(error.message).toMatch(/overloaded/);
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('recovers on the third attempt after two 503 responses', async () => {
+    vi.useFakeTimers();
+    try {
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce(errorResponse(503, 'overloaded'))
+        .mockResolvedValueOnce(errorResponse(503, 'overloaded'))
+        .mockResolvedValueOnce(okResponse('{"recovered":true}'));
+      const promise = callGemini('test prompt');
+      await vi.advanceTimersByTimeAsync(10_000);
+      const result = await promise;
+      expect(result.json).toEqual({ recovered: true });
+      expect(global.fetch).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('honors Retry-After header on a 429 (waits the indicated seconds, then succeeds)', async () => {
+    vi.useFakeTimers();
+    try {
+      // Build a 429 response that includes a Retry-After: 5 header.
+      const rateLimited = {
+        ok: false,
+        status: 429,
+        headers: { get: (name) => (name.toLowerCase() === 'retry-after' ? '5' : null) },
+        json: async () => ({ error: { message: 'rate limit' } })
+      };
+      global.fetch = vi.fn()
+        .mockResolvedValueOnce(rateLimited)
+        .mockResolvedValueOnce(okResponse('{"ok":true}'));
+
+      const promise = callGemini('test prompt');
+
+      // Advance just under the Retry-After window — the second attempt
+      // must NOT have fired yet.
+      await vi.advanceTimersByTimeAsync(4_000);
+      expect(global.fetch).toHaveBeenCalledTimes(1);
+
+      // Advance past the 5s mark — the second attempt should now run.
+      await vi.advanceTimersByTimeAsync(2_000);
+      const result = await promise;
+      expect(result.json).toEqual({ ok: true });
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
   it('does not retry on HTTP 403', async () => {
     global.fetch = vi.fn().mockResolvedValue(errorResponse(403, 'forbidden'));

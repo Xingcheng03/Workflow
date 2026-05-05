@@ -202,6 +202,14 @@ export const useAgentWorkflow = (initialSymbol) => {
     setResults(nextResults);
     emitLog(`Full workflow queued for ${validation.symbol}.`);
 
+    // Phase functions close over `nextResults` and `firstFailure` and mutate
+    // them in place. Each phase pushes the new local results into React state
+    // via `flush()` so the UI animates step-by-step. Phases return:
+    //   undefined — continue to the next phase
+    //   'short-circuit' — finish the workflow now, suppress the final
+    //                     "completed" log (used when a verifier itself was
+    //                     aborted mid-flight; the workflow has nothing more
+    //                     to do but it didn't run end-to-end either)
     let firstFailure = null;
 
     const runOne = async (agentId, context, options) => {
@@ -245,102 +253,120 @@ export const useAgentWorkflow = (initialSymbol) => {
       }
     };
 
-    const exitAborted = () => {
-      emitLog('Workflow aborted by user.');
-      finishRun();
+    const flush = () => setResults(nextResults);
+
+    // Common pattern for any phase that runs exactly one agent.
+    const runSerialPhase = async (agentId, options) => {
+      setActiveAgents([agentId]);
+      applyOutcome(await runOne(agentId, nextResults, options));
+      flush();
     };
 
-    setActiveAgents(['data']);
-    applyOutcome(await runOne('data', nextResults));
-    setResults(nextResults);
-    if (signal.aborted) return exitAborted();
+    // Phase 3 only: Analysis + Risk fan out, both seeing Data + News context.
+    const runFanOutPhase = async (ids) => {
+      setActiveAgents(ids);
+      const ctx = nextResults;
+      const outcomes = await Promise.all(ids.map((id) => runOne(id, ctx)));
+      outcomes.forEach(applyOutcome);
+      flush();
+    };
 
-    // Phase 2: News runs alone so its sentiment + headlines can ground Risk.
-    setActiveAgents(['news']);
-    applyOutcome(await runOne('news', nextResults));
-    setResults(nextResults);
-    if (signal.aborted) return exitAborted();
+    // Phase 5: verifier check, optional revision, optional re-verify.
+    // Self-contained because the control flow is much richer than the other
+    // phases (three sub-phases, two early exits).
+    const runVerificationPhase = async () => {
+      if (!nextResults.report) return;
 
-    // Phase 3: Analysis and Risk fan out, both seeing Data + News context.
-    setActiveAgents(FAN_OUT_AGENTS);
-    const fanContext = nextResults;
-    const fanOutcomes = await Promise.all(FAN_OUT_AGENTS.map((id) => runOne(id, fanContext)));
-    fanOutcomes.forEach(applyOutcome);
-    setResults(nextResults);
-    if (signal.aborted) return exitAborted();
-
-    setActiveAgents(['report']);
-    applyOutcome(await runOne('report', nextResults));
-    setResults(nextResults);
-    if (signal.aborted) return exitAborted();
-
-    // Phase 5a: Verifier checks Report v1.
-    if (nextResults.report) {
+      // Phase 5a: Verifier checks Report v1.
       setActiveAgents(['verifier']);
       setWorkflowPhase('verify-v1');
-      const verifierV1Outcome = await runOne('verifier', nextResults);
-      applyOutcome(verifierV1Outcome);
-      setResults(nextResults);
-      if (signal.aborted) return exitAborted();
-
-      // If Verifier itself was aborted (AbortError thrown without user-cancel),
-      // we have no v1 verdict — skip the revision loop. Otherwise we'd misread
-      // the absent verifier as "pass" and emit a misleading log.
-      if (verifierV1Outcome.aborted) {
+      const v1Outcome = await runOne('verifier', nextResults);
+      applyOutcome(v1Outcome);
+      flush();
+      if (signal.aborted) return;
+      if (v1Outcome.aborted) {
+        // We have no v1 verdict; skip the revision loop entirely so we don't
+        // misread the absent verifier as "pass" downstream.
         emitLog('Verifier did not complete; skipping revision check.');
-        finishRun();
-        return;
+        return 'short-circuit';
       }
 
       const v1 = nextResults.verifier;
       const blockingIssues = (v1?.issues || []).filter((i) => i.severity === 'blocking');
       const triggersRevision = v1?.status === 'fail' || blockingIssues.length > 0;
 
-      // Phase 5b/5c: At most one revision pass.
-      if (triggersRevision) {
-        emitLog(
-          `Verifier flagged ${blockingIssues.length} blocking issue(s). Asking Report Agent to revise.`
-        );
-        const previousReport = nextResults.report;
-        setActiveAgents(['report']);
-        setWorkflowPhase('revise');
-        const revisionOutcome = await runOne('report', nextResults, {
-          revisionFeedback: { previousReport, issues: blockingIssues }
-        });
-        applyOutcome(revisionOutcome);
-        setResults(nextResults);
-        if (signal.aborted) return exitAborted();
-
-        if (!revisionOutcome.ok) {
-          // Revision generation itself failed. Don't run Phase 5c — re-running
-          // Verifier on the unchanged v1 would just repeat the v1 issues. Keep
-          // v1 results visible with original Verifier output as final state.
-          emitLog('Report v2 generation failed; preserving v1 with original Verifier issues as final state.');
+      if (!triggersRevision) {
+        if (v1?.status === 'warn') {
+          emitLog(`Verifier passed with ${v1.issues?.length || 0} warning(s); not triggering revision.`);
         } else {
-          setActiveAgents(['verifier']);
-          setWorkflowPhase('verify-v2');
-          const verifierV2Outcome = await runOne('verifier', nextResults);
-          applyOutcome(verifierV2Outcome);
-          setResults(nextResults);
-          if (signal.aborted) return exitAborted();
-
-          if (verifierV2Outcome.aborted) {
-            // v2 verifier aborted; nextResults.verifier still holds v1's verdict.
-            // Don't pretend we have a v2 status — say so plainly.
-            emitLog('Verifier (v2) did not complete; v1 verdict remains the displayed result.');
-          } else {
-            const v2 = nextResults.verifier;
-            if (v2?.status === 'pass') {
-              emitLog('Verifier passed after one revision.');
-            } else {
-              emitLog(`Verifier still reports ${v2?.status || 'unknown'} after revision; surfacing remaining issues.`);
-            }
-          }
+          emitLog('Verifier passed.');
         }
-      } else if (v1?.status === 'warn') {
-        emitLog(`Verifier passed with ${v1.issues?.length || 0} warning(s); not triggering revision.`);
+        return;
+      }
+
+      // Phase 5b: ask Report agent to revise based on the blocking issues.
+      emitLog(
+        `Verifier flagged ${blockingIssues.length} blocking issue(s). Asking Report Agent to revise.`
+      );
+      const previousReport = nextResults.report;
+      setActiveAgents(['report']);
+      setWorkflowPhase('revise');
+      const revisionOutcome = await runOne('report', nextResults, {
+        revisionFeedback: { previousReport, issues: blockingIssues }
+      });
+      applyOutcome(revisionOutcome);
+      flush();
+      if (signal.aborted) return;
+
+      if (!revisionOutcome.ok) {
+        // Revision generation failed. Don't run Phase 5c — re-running
+        // Verifier on the unchanged v1 would just repeat the v1 issues.
+        emitLog('Report v2 generation failed; preserving v1 with original Verifier issues as final state.');
+        return;
+      }
+
+      // Phase 5c: re-verify the revised report.
+      setActiveAgents(['verifier']);
+      setWorkflowPhase('verify-v2');
+      const v2Outcome = await runOne('verifier', nextResults);
+      applyOutcome(v2Outcome);
+      flush();
+      if (signal.aborted) return;
+
+      if (v2Outcome.aborted) {
+        // nextResults.verifier still holds v1's verdict; be honest about it.
+        emitLog('Verifier (v2) did not complete; v1 verdict remains the displayed result.');
+        return;
+      }
+
+      const v2 = nextResults.verifier;
+      if (v2?.status === 'pass') {
+        emitLog('Verifier passed after one revision.');
       } else {
-        emitLog('Verifier passed.');
+        emitLog(`Verifier still reports ${v2?.status || 'unknown'} after revision; surfacing remaining issues.`);
+      }
+    };
+
+    // Phase pipeline. Each entry returns 'short-circuit' to stop the run early
+    // (without the usual completion log) or undefined to continue.
+    const phases = [
+      () => runSerialPhase('data'),
+      () => runSerialPhase('news'),
+      () => runFanOutPhase(FAN_OUT_AGENTS),
+      () => runSerialPhase('report'),
+      () => runVerificationPhase()
+    ];
+
+    for (const phase of phases) {
+      const result = await phase();
+      if (signal.aborted) {
+        emitLog('Workflow aborted by user.');
+        finishRun();
+        return;
+      }
+      if (result === 'short-circuit') {
+        finishRun();
+        return;
       }
     }
 

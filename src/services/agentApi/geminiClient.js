@@ -4,9 +4,17 @@
 import { TTL, cacheGet, cacheKey, cacheSet, hashString } from '../cache.js';
 import { parseJson } from './parseJson.js';
 
-const RETRY_BACKOFF_MS = 800;
 const MAX_SOURCES = 5;
 const REQUEST_TIMEOUT_MS = 60_000;
+
+// Retry policy for transient upstream failures (429, 5xx, network blips).
+// Three total attempts with exponential backoff + ±25% jitter — Gemini's
+// "model is overloaded, please try again later" usually clears in 5-15s,
+// so attempts at ~0s / ~2s / ~6s give us a realistic chance to ride it out.
+const MAX_ATTEMPTS = 3;
+const BASE_BACKOFF_MS = 2_000;
+const MAX_BACKOFF_MS = 20_000;
+const JITTER_RATIO = 0.25;
 
 const SYSTEM_INSTRUCTION =
   'You are a careful finance workflow agent for a classroom dashboard. Return only valid JSON. Do not include markdown fences. If live market values are uncertain, say "not verified" instead of inventing exact numbers.';
@@ -15,6 +23,29 @@ const RETRY_HINT =
   '\n\nIMPORTANT: Your previous response was not valid JSON. Return only one JSON object, no markdown fences, no commentary.';
 
 const pause = (duration) => new Promise((resolve) => setTimeout(resolve, duration));
+
+// Exponential backoff with jitter. Honors a Retry-After hint from 429
+// responses when present; otherwise grows BASE × 2^attempt up to a cap.
+// Jitter avoids the thundering-herd where every parallel agent retries at
+// the same moment.
+const backoffMs = (attempt, retryAfterSeconds) => {
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return Math.min(retryAfterSeconds * 1000, MAX_BACKOFF_MS);
+  }
+  const exp = Math.min(BASE_BACKOFF_MS * 2 ** attempt, MAX_BACKOFF_MS);
+  const jitter = exp * JITTER_RATIO * (Math.random() * 2 - 1);
+  return Math.max(0, exp + jitter);
+};
+
+// Parse Retry-After from a 429 response. Spec allows seconds-int OR HTTP-date;
+// we only handle the seconds form (Gemini uses that). Returns NaN if absent
+// or unparseable.
+const parseRetryAfter = (response) => {
+  const raw = response.headers?.get?.('retry-after');
+  if (!raw) return NaN;
+  const seconds = Number(raw);
+  return Number.isFinite(seconds) ? seconds : NaN;
+};
 
 // Build a signal that aborts when EITHER the caller's signal aborts OR the
 // per-attempt timeout fires. A fresh timeout per attempt is intentional —
@@ -83,31 +114,45 @@ export const callGemini = async (prompt, signal, options = {}) => {
     signal: buildAttemptSignal(signal)
   });
 
-  const tryOnce = async (init) => {
+  const tryOnce = async (initFactory) => {
+    // Re-call the factory each attempt so the AbortSignal is fresh — a
+    // single signal is consumed once it aborts, so retries must rebuild it.
+    const init = initFactory();
     const response = await fetch(url, init);
     const data = await response.json();
     if (!response.ok) {
       const err = new Error(`Gemini API error: ${data?.error?.message || response.statusText}`);
       err.retryable = response.status === 429 || response.status >= 500;
+      err.retryAfter = parseRetryAfter(response);
+      err.status = response.status;
       throw err;
     }
     return data;
   };
 
-  const fetchWithBackoff = async (init) => {
-    try {
-      return await tryOnce(init);
-    } catch (error) {
-      // Caller-driven aborts and timeouts both bypass retry — a 60s timeout
-      // suggests the upstream is hosed, not flaky. AbortSignal.any propagates
-      // the source's reason so error.name distinguishes the two.
-      if (error.name === 'AbortError' || error.name === 'TimeoutError') throw error;
-      if (error.retryable || error.name === 'TypeError') {
-        await pause(RETRY_BACKOFF_MS);
-        return await tryOnce(init);
+  const fetchWithBackoff = async (initFactory) => {
+    let lastError;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      try {
+        return await tryOnce(initFactory);
+      } catch (error) {
+        // Caller-driven aborts and timeouts always bypass retry — a 60s
+        // timeout suggests the upstream is hosed, not flaky. AbortSignal.any
+        // propagates the source's reason so error.name distinguishes the two.
+        if (error.name === 'AbortError' || error.name === 'TimeoutError') throw error;
+        // Network-level failure (TypeError on fetch) and 429/5xx are retryable.
+        const retryable = error.retryable || error.name === 'TypeError';
+        const isLast = attempt === MAX_ATTEMPTS - 1;
+        if (!retryable || isLast) {
+          throw error;
+        }
+        lastError = error;
+        await pause(backoffMs(attempt, error.retryAfter));
       }
-      throw error;
     }
+    // Unreachable — the loop either returns or throws — but satisfies the
+    // linter and gives a clearer message if invariants ever break.
+    throw lastError ?? new Error('Gemini retry loop exhausted unexpectedly');
   };
 
   const parseResult = (data) => {
@@ -119,10 +164,10 @@ export const callGemini = async (prompt, signal, options = {}) => {
     };
   };
 
-  let result = parseResult(await fetchWithBackoff(buildInit(prompt)));
+  let result = parseResult(await fetchWithBackoff(() => buildInit(prompt)));
 
   if (!result.json && result.text) {
-    const retryData = await fetchWithBackoff(buildInit(prompt + RETRY_HINT));
+    const retryData = await fetchWithBackoff(() => buildInit(prompt + RETRY_HINT));
     const retryResult = parseResult(retryData);
     if (retryResult.json) result = retryResult;
   }

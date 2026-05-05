@@ -12,13 +12,18 @@ import { FindingsPanel } from './components/FindingsPanel.jsx';
 import { TrendPanel } from './components/TrendPanel.jsx';
 import { LogPanel } from './components/LogPanel.jsx';
 import { ReportPanel } from './components/ReportPanel.jsx';
+import { AgentDetailModal } from './components/AgentDetailModal.jsx';
 
 function App() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
+  // Currently-open agent detail modal. null when no modal is open.
+  const [selectedAgentId, setSelectedAgentId] = useState(null);
   // Destructure the hook return so dep arrays below can name individual
   // callbacks instead of referencing `wf.x` (which makes the hooks lint rule
   // unhappy, and would also pull every render's fresh `wf` object reference
-  // into the deps).
+  // into the deps). `runAgent` is intentionally not destructured — the UI
+  // no longer triggers single-agent runs; only Run Full Analysis kicks off
+  // work. The hook still exposes runAgent for tests / future callers.
   const {
     results,
     activeAgents,
@@ -29,7 +34,6 @@ function App() {
     error,
     allSources,
     workflowPhase,
-    runAgent,
     runWorkflow,
     cancel,
     reset
@@ -42,22 +46,23 @@ function App() {
     () => results.data?.company || createCompanyShell(symbol),
     [results.data?.company, symbol]
   );
-  const timeline = useMemo(() => {
-    const history = results.data?.history || [];
-    const intraday = results.data?.trend || [];
+  // Prefer the 6-month daily OHLC when available (richer story); fall back
+  // to intraday for live charts. Closes-only arrays are still used by the
+  // agent prompts via summarizeContext.
+  const trendOhlc = useMemo(() => {
+    const history = results.data?.historyOhlc || [];
+    const intraday = results.data?.trendOhlc || [];
     return history.length > 0 ? history : intraday;
-  }, [results.data?.history, results.data?.trend]);
-  const timelineLabel = (results.data?.history?.length ?? 0) > 0 ? '6-month daily' : 'Intraday';
+  }, [results.data?.historyOhlc, results.data?.trendOhlc]);
+  const trendLabel = (results.data?.historyOhlc?.length ?? 0) > 0 ? '6-month daily' : 'Intraday';
 
   const handleRun = useCallback(() => runWorkflow(symbol), [runWorkflow, symbol]);
   const handleCancelOrReset = useCallback(() => {
     if (isRunning) cancel();
     else reset(symbol);
   }, [isRunning, cancel, reset, symbol]);
-  const handleRunAgent = useCallback(
-    (agentId) => runAgent(agentId, symbol),
-    [runAgent, symbol]
-  );
+  const handleAgentClick = useCallback((agentId) => setSelectedAgentId(agentId), []);
+  const handleCloseModal = useCallback(() => setSelectedAgentId(null), []);
 
   // Keep a ref so the keydown listener (registered once) always sees the
   // latest values without re-binding on every render.
@@ -103,17 +108,14 @@ function App() {
           activeAgents={activeAgents}
           completedAgents={completedAgents}
           failedAgents={failedAgents}
-          isRunning={isRunning}
-          hasReportTitle={!!results.report?.title}
-          hasDataPrice={!!results.data?.metrics?.price}
-          onRunAgent={handleRunAgent}
+          onAgentClick={handleAgentClick}
         />
 
         <WorkflowTrack
-          agents={agentDefinitions}
           activeAgents={activeAgents}
           completedAgents={completedAgents}
           failedAgents={failedAgents}
+          workflowPhase={workflowPhase}
           completedAt={results.completedAt}
         />
 
@@ -130,9 +132,10 @@ function App() {
         />
 
         <TrendPanel
-          timeline={timeline}
-          timelineLabel={timelineLabel}
+          ohlc={trendOhlc}
+          label={trendLabel}
           metrics={results.data?.metrics}
+          marketMeta={results.data?.marketMeta}
         />
 
         <LogPanel logs={logs} />
@@ -145,6 +148,12 @@ function App() {
           marketMeta={results.data?.marketMeta}
         />
       </section>
+
+      <AgentDetailModal
+        agentId={selectedAgentId}
+        results={results}
+        onClose={handleCloseModal}
+      />
     </main>
   );
 }

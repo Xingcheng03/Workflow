@@ -54,12 +54,26 @@
  */
 
 /**
+ * @typedef {Object} OhlcBar
+ * @property {number} open
+ * @property {number} high
+ * @property {number} low
+ * @property {number} close
+ * @property {number | null} [volume]      raw share count, null when Yahoo omits
+ * @property {number | null} [timestamp]   epoch seconds, when available
+ */
+
+/**
  * Output of the Data agent (Yahoo-sourced; never goes through Gemini).
+ * Closes-only arrays are kept alongside OHLC arrays so prompt context can
+ * stay small while the UI gets full candlestick data.
  * @typedef {Object} DataPayload
  * @property {CompanySnapshot} company
  * @property {DataMetrics} metrics
- * @property {number[]} trend         compacted intraday closes
- * @property {number[]} history       compacted 6-month daily closes
+ * @property {number[]} trend           compacted intraday closes (for prompts)
+ * @property {number[]} history         compacted 6-month daily closes
+ * @property {OhlcBar[]} trendOhlc      compacted intraday OHLC (for charts)
+ * @property {OhlcBar[]} historyOhlc    compacted 6-month daily OHLC
  * @property {MarketMeta} marketMeta
  */
 

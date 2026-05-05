@@ -42,6 +42,182 @@ button:disabled {
   padding: 28px;
 }
 
+/* ─── Agent detail modal ──────────────────────────────────────────────── */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(28, 22, 12, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+  animation: modal-fade-in 120ms ease-out;
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.modal-content {
+  width: min(720px, 100%);
+  max-height: min(82vh, 760px);
+  background: #fffcf6;
+  border: 1px solid #d8d0c2;
+  border-radius: 12px;
+  box-shadow: 0 32px 80px rgba(45, 35, 25, 0.32);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #ecdfd0;
+  background: color-mix(in srgb, var(--agent-accent, #1d8f7a) 6%, white);
+}
+
+.modal-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--agent-accent, #1d8f7a) 14%, white);
+  color: var(--agent-accent, #1d8f7a);
+}
+
+.modal-title-block h2 {
+  font-size: 1.05rem;
+  margin: 0;
+}
+
+.modal-title-block small {
+  display: block;
+  margin-top: 2px;
+  color: #6e675d;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.detail-section h3 {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6e675d;
+  margin-bottom: 8px;
+}
+
+.detail-section p {
+  margin: 0 0 4px;
+  line-height: 1.55;
+}
+
+.detail-kv-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px 16px;
+}
+
+.detail-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 10px;
+  border: 1px solid #ecdfd0;
+  border-radius: 6px;
+  background: white;
+}
+
+.detail-kv span {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #8a847b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.detail-kv strong {
+  font-size: 0.92rem;
+  color: #1b1c1f;
+  word-break: break-word;
+}
+
+.detail-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detail-list li {
+  line-height: 1.5;
+}
+
+.detail-title {
+  font-size: 1.15rem;
+  font-weight: 800;
+  margin: 0 0 8px;
+}
+
+.detail-section .price-chart {
+  border: 1px solid #ecdfd0;
+  border-radius: 6px;
+  background: #fffaf0;
+  padding: 4px;
+}
+
+.detail-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.detail-sources a {
+  font-size: 0.82rem;
+  color: #5567d9;
+  padding: 4px 10px;
+  border: 1px solid #d6dafd;
+  border-radius: 999px;
+  background: white;
+  text-decoration: none;
+}
+
+.detail-sources a:hover {
+  background: #f3f4ff;
+}
+
+.detail-empty {
+  margin: 0;
+  padding: 24px;
+  text-align: center;
+  background: #fffaf0;
+  border: 1px dashed #d8d0c2;
+  border-radius: 8px;
+}
+
+.verifier-issue-list {
+  list-style: none;
+  padding: 0;
+}
+
 .topbar,
 .command-strip,
 .agent-panel,
@@ -248,11 +424,12 @@ h3 {
   display: grid;
   grid-template-columns: 320px 1fr 360px;
   grid-template-areas:
-    "error error error"
-    "agents workflow trend"
-    "agents metrics report"
-    "agents findings report"
-    "logs logs report";
+    "error    error    error"
+    "agents   workflow report"
+    "agents   trend    report"
+    "agents   metrics  report"
+    "agents   findings report"
+    "logs     logs     report";
   gap: 16px;
   margin-top: 16px;
 }
@@ -401,6 +578,10 @@ h3 {
 .agent-list {
   display: grid;
   gap: 11px;
+  /* Agents column now spans 4 right-side rows; without this, the grid would
+     stretch buttons to fill the panel. Top-align so buttons keep their
+     natural size and surplus space sits cleanly below. */
+  align-content: start;
 }
 
 .agent-button {
@@ -456,46 +637,168 @@ h3 {
 .workflow-track {
   display: flex;
   align-items: center;
+  justify-content: center;
   min-height: 132px;
-  overflow-x: auto;
   padding: 8px 2px 16px;
+  /* No horizontal scroll: 5 phase cells × ~110px + 4 connectors comfortably
+     fit in the workflow column at all responsive breakpoints. */
 }
 
-.workflow-step-wrap {
+.workflow-phase-wrap {
   display: flex;
   align-items: center;
-  flex: 1 0 128px;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
-.workflow-step {
-  display: grid;
-  place-items: center;
-  gap: 9px;
-  width: 96px;
-  height: 94px;
-  border: 1px solid #d8d0c2;
-  border-radius: 8px;
+.workflow-phase {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-width: 96px;
+  max-width: 134px;
+  min-height: 118px;
+  padding: 10px 8px 8px;
+  border: 1.5px solid #d8d0c2;
+  border-radius: 10px;
   background: #ffffff;
-  color: #4a4742;
-  font-weight: 850;
   text-align: center;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
-.workflow-step.active {
-  border-color: var(--agent-accent);
-  color: var(--agent-accent);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--agent-accent) 14%, transparent);
+.workflow-phase.active {
+  border-color: #1d8f7a;
+  box-shadow: 0 0 0 4px color-mix(in srgb, #1d8f7a 14%, transparent);
 }
 
-.workflow-step.done {
-  background: color-mix(in srgb, var(--agent-accent) 10%, white);
-  border-color: var(--agent-accent);
+.workflow-phase.done {
+  background: color-mix(in srgb, #1d8f7a 8%, white);
+  border-color: #1d8f7a;
 }
 
-.workflow-step.failed {
+.workflow-phase.failed {
   background: #fdf3f3;
   border-color: #c74751;
+}
+
+.phase-cell {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex: 1;
+  width: 100%;
+}
+
+/* Phase 3 fan-out: render each parallel agent as its own bordered mini-box
+   stacked vertically. Two boxes inside the parent makes the concurrency
+   physically visible. */
+.workflow-phase.parallel .phase-cell {
+  flex-direction: column;
+  gap: 5px;
+}
+
+.phase-agent {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #6b6760;
+  opacity: 0.75;
+  transition: color 0.18s ease, opacity 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+}
+
+/* Inside a parallel phase, each agent gets its own framed pill so Analysis
+   and Risk read as two distinct concurrent units. */
+.workflow-phase.parallel .phase-agent {
+  justify-content: center;
+  width: 100%;
+  padding: 5px 6px;
+  border: 1px solid #d8d0c2;
+  border-radius: 6px;
+  background: #fcfaf6;
+  opacity: 1;
+}
+
+.workflow-phase.parallel .phase-agent.active {
+  border-color: var(--agent-accent);
+  background: color-mix(in srgb, var(--agent-accent) 10%, white);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--agent-accent) 14%, transparent);
+}
+
+.workflow-phase.parallel .phase-agent.done {
+  border-color: var(--agent-accent);
+  background: color-mix(in srgb, var(--agent-accent) 7%, white);
+}
+
+.workflow-phase.parallel .phase-agent.failed {
+  border-color: #c74751;
+  background: #fdf3f3;
+}
+
+.phase-agent.active {
+  color: var(--agent-accent);
+  opacity: 1;
+}
+
+.phase-agent.done {
+  color: var(--agent-accent);
+  opacity: 1;
+}
+
+.phase-agent.failed {
   color: #c74751;
+  opacity: 1;
+}
+
+.phase-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #6b6760;
+}
+
+.workflow-phase.done .phase-label,
+.workflow-phase.active .phase-label {
+  color: #1d8f7a;
+}
+
+.workflow-phase.failed .phase-label {
+  color: #c74751;
+}
+
+/* Verifier sub-state badge: shows v1 / revise / v2 over the Verify cell to
+   make the revision loop visible. */
+.phase-badge {
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #7355d6;
+  color: white;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  box-shadow: 0 4px 10px rgba(115, 85, 214, 0.3);
+}
+
+.phase-badge-revise {
+  background: #c8791a;
+  box-shadow: 0 4px 10px rgba(200, 121, 26, 0.3);
+}
+
+.phase-badge-verify-v2 {
+  background: #1d8f7a;
+  box-shadow: 0 4px 10px rgba(29, 143, 122, 0.3);
 }
 
 .connector {
@@ -509,6 +812,10 @@ h3 {
 .connector.done,
 .connector.active {
   background: #1d8f7a;
+}
+
+.connector.failed {
+  background: #c74751;
 }
 
 .metric-grid {
@@ -555,35 +862,15 @@ h3 {
   margin-right: 6px;
 }
 
-.trend-bars {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(24px, 1fr));
-  align-items: end;
-  gap: 10px;
-  min-height: 188px;
-  padding-top: 10px;
-}
-
-.bar-wrap {
-  display: grid;
-  grid-template-rows: 132px 24px;
-  align-items: end;
-  justify-items: center;
-  gap: 8px;
-}
-
-.bar {
+.trend-chart-host {
   width: 100%;
-  max-width: 36px;
-  min-height: 34px;
-  border-radius: 7px 7px 3px 3px;
-  background: linear-gradient(180deg, #1d8f7a, #6e7f2d);
 }
 
-.bar-wrap span {
-  color: #6e675d;
-  font-size: 0.76rem;
-  font-weight: 800;
+.price-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 240px;
 }
 
 .verifier-strip {
