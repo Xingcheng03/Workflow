@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import { AGENT_ICONS } from '../constants.js';
 
-export const AgentControls = ({
+export const AgentControls = memo(({
   agents,
   activeAgents,
   completedAgents,
@@ -52,4 +53,4 @@ export const AgentControls = ({
       })}
     </div>
   </div>
-);
+));

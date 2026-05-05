@@ -590,6 +590,30 @@ describe('callGemini', () => {
     expect(global.fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('propagates TimeoutError without retrying (per-attempt timeout fired)', async () => {
+    // Simulate the per-attempt timeout firing inside fetch by rejecting with
+    // a TimeoutError on the first call and resolving the second. The retry
+    // path should NOT activate, so fetch is called exactly once.
+    global.fetch = vi.fn()
+      .mockRejectedValueOnce(new DOMException('timed out', 'TimeoutError'))
+      .mockResolvedValueOnce(okResponse('{"recovered":true}'));
+    await expect(callGemini('test prompt')).rejects.toThrow(/timed out/);
+    expect(global.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('attaches a non-aborted signal to each attempt by default', async () => {
+    // No caller-supplied signal: the per-attempt timeout signal is still
+    // attached (so we can race the request) but must start out non-aborted.
+    let capturedSignal;
+    global.fetch = vi.fn().mockImplementation((_url, init) => {
+      capturedSignal = init.signal;
+      return Promise.resolve(okResponse('{"a":1}'));
+    });
+    await callGemini('test');
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal.aborted).toBe(false);
+  });
+
   it('throws if VITE_GEMINI_API_KEY is missing', async () => {
     vi.unstubAllEnvs();
     vi.stubEnv('VITE_GEMINI_API_KEY', '');

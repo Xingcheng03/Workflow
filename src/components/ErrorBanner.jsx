@@ -1,4 +1,6 @@
-export const ErrorBanner = ({ message }) => {
+import { memo } from 'react';
+
+export const ErrorBanner = memo(({ message }) => {
   if (!message) return null;
   return (
     <div className="error-panel" role="alert">
@@ -6,4 +8,4 @@ export const ErrorBanner = ({ message }) => {
       <span>{message}</span>
     </div>
   );
-};
+});

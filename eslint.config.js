@@ -33,6 +33,11 @@ export default [
       ...reactHooks.configs.recommended.rules,
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',
+      // memo(() => ...) on a named const shows up correctly in DevTools; the
+      // rule's heuristic flags the inner anonymous fn even though the export
+      // name is fine. Disabling globally rather than scattering displayName
+      // assignments.
+      'react/display-name': 'off',
       // Tests + Vite middleware get to use unused-prefixed args freely.
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       // Allow empty catch blocks when paired with a comment explaining the swallow.

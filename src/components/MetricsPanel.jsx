@@ -1,8 +1,9 @@
+import { memo } from 'react';
 import { Chip } from './Chip.jsx';
 import { SentimentBar } from './SentimentBar.jsx';
 import { METRIC_ITEMS, RECOMMENDATION_CHIP } from '../constants.js';
 
-export const MetricsPanel = ({ recommendation, metrics, sentimentScore }) => (
+export const MetricsPanel = memo(({ recommendation, metrics, sentimentScore }) => (
   <div className="metrics-panel">
     <div className="panel-heading">
       <h2>Financial Metrics</h2>
@@ -21,4 +22,4 @@ export const MetricsPanel = ({ recommendation, metrics, sentimentScore }) => (
       </div>
     </div>
   </div>
-);
+));

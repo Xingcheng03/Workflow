@@ -1,4 +1,6 @@
-export const LogPanel = ({ logs }) => (
+import { memo } from 'react';
+
+export const LogPanel = memo(({ logs }) => (
   <div className="log-panel">
     <div className="panel-heading">
       <h2>Execution Logs</h2>
@@ -17,4 +19,4 @@ export const LogPanel = ({ logs }) => (
       )}
     </div>
   </div>
-);
+));

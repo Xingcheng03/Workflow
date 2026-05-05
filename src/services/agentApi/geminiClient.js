@@ -6,6 +6,7 @@ import { parseJson } from './parseJson.js';
 
 const RETRY_BACKOFF_MS = 800;
 const MAX_SOURCES = 5;
+const REQUEST_TIMEOUT_MS = 60_000;
 
 const SYSTEM_INSTRUCTION =
   'You are a careful finance workflow agent for a classroom dashboard. Return only valid JSON. Do not include markdown fences. If live market values are uncertain, say "not verified" instead of inventing exact numbers.';
@@ -14,6 +15,15 @@ const RETRY_HINT =
   '\n\nIMPORTANT: Your previous response was not valid JSON. Return only one JSON object, no markdown fences, no commentary.';
 
 const pause = (duration) => new Promise((resolve) => setTimeout(resolve, duration));
+
+// Build a signal that aborts when EITHER the caller's signal aborts OR the
+// per-attempt timeout fires. A fresh timeout per attempt is intentional —
+// retry-after-backoff should get its own full budget rather than racing the
+// original timeout.
+const buildAttemptSignal = (userSignal) => {
+  const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  return userSignal ? AbortSignal.any([userSignal, timeoutSignal]) : timeoutSignal;
+};
 
 const getGeminiConfig = () => {
   const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
@@ -70,7 +80,7 @@ export const callGemini = async (prompt, signal, options = {}) => {
         ...(useGoogleSearch ? {} : { responseMimeType: 'application/json' })
       }
     }),
-    signal
+    signal: buildAttemptSignal(signal)
   });
 
   const tryOnce = async (init) => {
@@ -88,7 +98,10 @@ export const callGemini = async (prompt, signal, options = {}) => {
     try {
       return await tryOnce(init);
     } catch (error) {
-      if (error.name === 'AbortError') throw error;
+      // Caller-driven aborts and timeouts both bypass retry — a 60s timeout
+      // suggests the upstream is hosed, not flaky. AbortSignal.any propagates
+      // the source's reason so error.name distinguishes the two.
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') throw error;
       if (error.retryable || error.name === 'TypeError') {
         await pause(RETRY_BACKOFF_MS);
         return await tryOnce(init);

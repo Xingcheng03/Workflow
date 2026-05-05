@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { agentDefinitions, createCompanyShell } from './services/agentApi';
 import { useAgentWorkflow } from './hooks/useAgentWorkflow';
 import { DEFAULT_SYMBOL } from './constants.js';
@@ -15,27 +15,60 @@ import { ReportPanel } from './components/ReportPanel.jsx';
 
 function App() {
   const [symbol, setSymbol] = useState(DEFAULT_SYMBOL);
-  const wf = useAgentWorkflow(DEFAULT_SYMBOL);
+  // Destructure the hook return so dep arrays below can name individual
+  // callbacks instead of referencing `wf.x` (which makes the hooks lint rule
+  // unhappy, and would also pull every render's fresh `wf` object reference
+  // into the deps).
+  const {
+    results,
+    activeAgents,
+    completedAgents,
+    failedAgents,
+    logs,
+    isRunning,
+    error,
+    allSources,
+    workflowPhase,
+    runAgent,
+    runWorkflow,
+    cancel,
+    reset
+  } = useAgentWorkflow(DEFAULT_SYMBOL);
 
-  const company = wf.results.data?.company || createCompanyShell(symbol);
-  const history = wf.results.data?.history || [];
-  const intraday = wf.results.data?.trend || [];
-  const timeline = history.length > 0 ? history : intraday;
-  const timelineLabel = history.length > 0 ? '6-month daily' : 'Intraday';
+  // Memoised so memoised panels can bail when nothing they care about
+  // changed. Without these wrappers, fresh array/object literals (`|| []`,
+  // shell company) would be a new reference every render and defeat memo.
+  const company = useMemo(
+    () => results.data?.company || createCompanyShell(symbol),
+    [results.data?.company, symbol]
+  );
+  const timeline = useMemo(() => {
+    const history = results.data?.history || [];
+    const intraday = results.data?.trend || [];
+    return history.length > 0 ? history : intraday;
+  }, [results.data?.history, results.data?.trend]);
+  const timelineLabel = (results.data?.history?.length ?? 0) > 0 ? '6-month daily' : 'Intraday';
 
-  const handleCancelOrReset = () => {
-    if (wf.isRunning) wf.cancel();
-    else wf.reset(symbol);
-  };
+  const handleRun = useCallback(() => runWorkflow(symbol), [runWorkflow, symbol]);
+  const handleCancelOrReset = useCallback(() => {
+    if (isRunning) cancel();
+    else reset(symbol);
+  }, [isRunning, cancel, reset, symbol]);
+  const handleRunAgent = useCallback(
+    (agentId) => runAgent(agentId, symbol),
+    [runAgent, symbol]
+  );
 
   // Keep a ref so the keydown listener (registered once) always sees the
-  // latest workflow state without needing to re-bind the listener on each render.
-  const wfRef = useRef(wf);
-  wfRef.current = wf;
+  // latest values without re-binding on every render.
+  const cancelRef = useRef(cancel);
+  const isRunningRef = useRef(isRunning);
+  cancelRef.current = cancel;
+  isRunningRef.current = isRunning;
   useEffect(() => {
     const handler = (event) => {
-      if (event.key === 'Escape' && wfRef.current.isRunning) {
-        wfRef.current.cancel();
+      if (event.key === 'Escape' && isRunningRef.current) {
+        cancelRef.current();
       }
     };
     window.addEventListener('keydown', handler);
@@ -45,69 +78,71 @@ function App() {
   return (
     <main className="app-shell">
       <Topbar
-        isRunning={wf.isRunning}
-        workflowPhase={wf.workflowPhase}
-        activeAgents={wf.activeAgents}
+        isRunning={isRunning}
+        workflowPhase={workflowPhase}
+        activeAgents={activeAgents}
         agentDefinitions={agentDefinitions}
       />
 
       <CommandStrip
         symbol={symbol}
         setSymbol={setSymbol}
-        isRunning={wf.isRunning}
-        onRun={() => wf.runWorkflow(symbol)}
+        isRunning={isRunning}
+        onRun={handleRun}
         onCancelOrReset={handleCancelOrReset}
         knownSymbol={company.symbol}
         companyName={company.name}
         companySector={company.sector}
       />
 
-      <section className="workspace-grid" aria-busy={wf.isRunning}>
-        <ErrorBanner message={wf.error} />
+      <section className="workspace-grid" aria-busy={isRunning}>
+        <ErrorBanner message={error} />
 
         <AgentControls
           agents={agentDefinitions}
-          activeAgents={wf.activeAgents}
-          completedAgents={wf.completedAgents}
-          failedAgents={wf.failedAgents}
-          isRunning={wf.isRunning}
-          hasReportTitle={!!wf.results.report?.title}
-          hasDataPrice={!!wf.results.data?.metrics?.price}
-          onRunAgent={(agentId) => wf.runAgent(agentId, symbol)}
+          activeAgents={activeAgents}
+          completedAgents={completedAgents}
+          failedAgents={failedAgents}
+          isRunning={isRunning}
+          hasReportTitle={!!results.report?.title}
+          hasDataPrice={!!results.data?.metrics?.price}
+          onRunAgent={handleRunAgent}
         />
 
         <WorkflowTrack
           agents={agentDefinitions}
-          getStepState={wf.getStepState}
-          completedAt={wf.results.completedAt}
+          activeAgents={activeAgents}
+          completedAgents={completedAgents}
+          failedAgents={failedAgents}
+          completedAt={results.completedAt}
         />
 
         <MetricsPanel
           recommendation={company.recommendation}
-          metrics={wf.results.data?.metrics}
-          sentimentScore={wf.results.news?.sentimentScore}
+          metrics={results.data?.metrics}
+          sentimentScore={results.news?.sentimentScore}
         />
 
         <FindingsPanel
-          news={wf.results.news}
-          analysis={wf.results.analysis}
-          risk={wf.results.risk}
+          news={results.news}
+          analysis={results.analysis}
+          risk={results.risk}
         />
 
         <TrendPanel
           timeline={timeline}
           timelineLabel={timelineLabel}
-          metrics={wf.results.data?.metrics}
+          metrics={results.data?.metrics}
         />
 
-        <LogPanel logs={wf.logs} />
+        <LogPanel logs={logs} />
 
         <ReportPanel
-          report={wf.results.report}
-          verifier={wf.results.verifier}
-          allSources={wf.allSources}
+          report={results.report}
+          verifier={results.verifier}
+          allSources={allSources}
           company={company}
-          marketMeta={wf.results.data?.marketMeta}
+          marketMeta={results.data?.marketMeta}
         />
       </section>
     </main>

@@ -1,4 +1,6 @@
-export const TrendPanel = ({ timeline, timelineLabel, metrics }) => {
+import { memo } from 'react';
+
+export const TrendPanel = memo(({ timeline, timelineLabel, metrics }) => {
   const hasReturnStat =
     metrics?.returnSixMonth && metrics.returnSixMonth !== 'not provided';
 
@@ -35,4 +37,4 @@ export const TrendPanel = ({ timeline, timelineLabel, metrics }) => {
       </div>
     </div>
   );
-};
+});

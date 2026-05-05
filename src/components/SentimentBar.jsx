@@ -1,6 +1,8 @@
+import { memo } from 'react';
+
 // Sentiment 0-100 visualisation. Coerces score to a finite number; renders
 // `--` when input is missing/invalid so we never produce `width: NaN%`.
-export const SentimentBar = ({ score }) => {
+export const SentimentBar = memo(({ score }) => {
   const numeric = typeof score === 'number' ? score : Number(score);
   if (!Number.isFinite(numeric)) return <strong>--</strong>;
   const clamped = Math.max(0, Math.min(100, numeric));
@@ -13,4 +15,4 @@ export const SentimentBar = ({ score }) => {
       <strong>{clamped}</strong>
     </div>
   );
-};
+});

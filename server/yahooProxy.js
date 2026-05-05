@@ -25,6 +25,49 @@ const QUOTE_SUMMARY_MODULES = [
   'recommendationTrend'
 ].join(',');
 
+const UPSTREAM_TIMEOUT_MS = 15_000;
+
+// In-flight de-duplication. While one request to Yahoo is in flight for a
+// given key, any concurrent caller awaits the same promise instead of firing
+// its own request — important when `Run Full Analysis` triggers chart +
+// history + summary in parallel and then a second click does it again before
+// the first round finishes.
+const inFlight = new Map();
+
+const dedupe = (key, factory) => {
+  const existing = inFlight.get(key);
+  if (existing) return existing;
+  const promise = factory().finally(() => {
+    // Only clear the slot if we're still the owner — protects against a race
+    // where a later caller already replaced the entry.
+    if (inFlight.get(key) === promise) inFlight.delete(key);
+  });
+  inFlight.set(key, promise);
+  return promise;
+};
+
+// Pull the upstream response into a serialisable `{status, body}` shape so it
+// can be replayed across multiple awaiting callers.
+const readUpstream = async (response) => ({
+  status: response.status,
+  body: await response.text()
+});
+
+const writeProxyResponse = (res, { status, body }) => {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(body);
+};
+
+const writeError = (res, status, message) => {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify({ error: message }));
+};
+
+const fetchWithTimeout = (url, init = {}) =>
+  fetch(url, { ...init, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
+
 export const marketChartHandler = async (req, res, next) => {
   if (!req.url?.startsWith('/api/market-chart/')) {
     next();
@@ -37,9 +80,7 @@ export const marketChartHandler = async (req, res, next) => {
     .toUpperCase();
 
   if (!symbol) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'Missing symbol' }));
+    writeError(res, 400, 'Missing symbol');
     return;
   }
 
@@ -49,22 +90,17 @@ export const marketChartHandler = async (req, res, next) => {
   const range = ALLOWED_RANGES.has(rawRange) ? rawRange : '1d';
   const interval = ALLOWED_INTERVALS.has(rawInterval) ? rawInterval : '5m';
   const includePrePost = range === '1d' ? '&includePrePost=true' : '';
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
+    symbol
+  )}?range=${range}&interval=${interval}${includePrePost}`;
 
   try {
-    const yahooResponse = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(
-        symbol
-      )}?range=${range}&interval=${interval}${includePrePost}`
+    const result = await dedupe(`chart:${symbol}:${range}:${interval}`, () =>
+      fetchWithTimeout(url).then(readUpstream)
     );
-    const body = await yahooResponse.text();
-
-    res.statusCode = yahooResponse.status;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(body);
+    writeProxyResponse(res, result);
   } catch (error) {
-    res.statusCode = 502;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: error.message }));
+    writeError(res, 502, error.message);
   }
 };
 
@@ -72,37 +108,64 @@ export const marketChartHandler = async (req, res, next) => {
 // once at first request and reuse — yfinance has used this same trick for years.
 // On 401 we refresh and retry exactly once.
 let crumbState = null;
+let crumbRefreshInFlight = null;
 
-const refreshCrumb = async () => {
-  // fc.yahoo.com sets the auth cookie; the 404 status is expected — we only
-  // care about Set-Cookie. Cookie name has historically rotated between A1/A3.
-  const cookieRes = await fetch('https://fc.yahoo.com/', {
-    headers: { 'User-Agent': YAHOO_UA },
-    redirect: 'manual'
-  });
-  const setCookie = cookieRes.headers.get('set-cookie') || '';
-  const match = /(A1|A3)=[^;]+/.exec(setCookie);
-  if (!match) throw new Error('Yahoo did not return an auth cookie (A1/A3)');
-  const cookie = match[0];
+const refreshCrumb = () => {
+  // Mutex: if a refresh is already running, every caller awaits the same one
+  // instead of triple-pinging fc.yahoo.com from parallel handlers.
+  if (crumbRefreshInFlight) return crumbRefreshInFlight;
 
-  const crumbRes = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', {
-    headers: { 'User-Agent': YAHOO_UA, Cookie: cookie }
-  });
-  if (!crumbRes.ok) throw new Error(`Yahoo crumb fetch failed: HTTP ${crumbRes.status}`);
-  const crumb = (await crumbRes.text()).trim();
-  if (!crumb || crumb.length > 32) throw new Error('Yahoo crumb response looks malformed');
+  crumbRefreshInFlight = (async () => {
+    try {
+      // fc.yahoo.com sets the auth cookie; the 404 status is expected — we only
+      // care about Set-Cookie. Cookie names have historically rotated; allow
+      // any single-letter+digit prefix (A1, A3, B1...) instead of hardcoding.
+      const cookieRes = await fetchWithTimeout('https://fc.yahoo.com/', {
+        headers: { 'User-Agent': YAHOO_UA },
+        redirect: 'manual'
+      });
+      const setCookie = cookieRes.headers.get('set-cookie') || '';
+      const match = /[A-Z]\d=[^;]+/.exec(setCookie);
+      if (!match) throw new Error('Yahoo did not return a recognisable auth cookie');
+      const cookie = match[0];
 
-  crumbState = { cookie, crumb, fetchedAt: Date.now() };
-  return crumbState;
+      const crumbRes = await fetchWithTimeout(
+        'https://query2.finance.yahoo.com/v1/test/getcrumb',
+        { headers: { 'User-Agent': YAHOO_UA, Cookie: cookie } }
+      );
+      if (!crumbRes.ok) throw new Error(`Yahoo crumb fetch failed: HTTP ${crumbRes.status}`);
+      const crumb = (await crumbRes.text()).trim();
+      if (!crumb || crumb.length > 32) throw new Error('Yahoo crumb response looks malformed');
+
+      crumbState = { cookie, crumb, fetchedAt: Date.now() };
+      return crumbState;
+    } finally {
+      crumbRefreshInFlight = null;
+    }
+  })();
+
+  return crumbRefreshInFlight;
 };
 
 const callQuoteSummary = (symbol, state) => {
   const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(
     symbol
   )}?modules=${QUOTE_SUMMARY_MODULES}&crumb=${encodeURIComponent(state.crumb)}`;
-  return fetch(url, {
+  return fetchWithTimeout(url, {
     headers: { 'User-Agent': YAHOO_UA, Cookie: state.cookie }
   });
+};
+
+const fetchSummary = async (symbol) => {
+  let state = crumbState || (await refreshCrumb());
+  let yahooResponse = await callQuoteSummary(symbol, state);
+
+  if (yahooResponse.status === 401) {
+    state = await refreshCrumb();
+    yahooResponse = await callQuoteSummary(symbol, state);
+  }
+
+  return readUpstream(yahooResponse);
 };
 
 export const marketSummaryHandler = async (req, res, next) => {
@@ -116,29 +179,15 @@ export const marketSummaryHandler = async (req, res, next) => {
     .toUpperCase();
 
   if (!symbol) {
-    res.statusCode = 400;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: 'Missing symbol' }));
+    writeError(res, 400, 'Missing symbol');
     return;
   }
 
   try {
-    let state = crumbState || (await refreshCrumb());
-    let yahooResponse = await callQuoteSummary(symbol, state);
-
-    if (yahooResponse.status === 401) {
-      state = await refreshCrumb();
-      yahooResponse = await callQuoteSummary(symbol, state);
-    }
-
-    const body = await yahooResponse.text();
-    res.statusCode = yahooResponse.status;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(body);
+    const result = await dedupe(`summary:${symbol}`, () => fetchSummary(symbol));
+    writeProxyResponse(res, result);
   } catch (error) {
-    res.statusCode = 502;
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: error.message }));
+    writeError(res, 502, error.message);
   }
 };
 
@@ -154,3 +203,14 @@ export const yahooProxyPlugin = () => ({
     server.middlewares.use(marketSummaryHandler);
   }
 });
+
+// Test-only hooks. Exposed so the proxy unit tests can reset module-level
+// state (in-flight maps, crumb cache) between cases without restarting the
+// process. Not part of the runtime API.
+export const __resetForTests = () => {
+  inFlight.clear();
+  crumbState = null;
+  crumbRefreshInFlight = null;
+};
+
+export const __getCrumbState = () => crumbState;

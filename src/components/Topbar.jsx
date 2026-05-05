@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import { statusPillText } from './statusPill.js';
 
-export const Topbar = ({ isRunning, workflowPhase, activeAgents, agentDefinitions }) => {
+export const Topbar = memo(({ isRunning, workflowPhase, activeAgents, agentDefinitions }) => {
   const text = statusPillText({ isRunning, workflowPhase, activeAgents, agentDefinitions });
   return (
     <header className="topbar">
@@ -14,4 +15,4 @@ export const Topbar = ({ isRunning, workflowPhase, activeAgents, agentDefinition
       </div>
     </header>
   );
-};
+});

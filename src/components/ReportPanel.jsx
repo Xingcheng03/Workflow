@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { CheckCircle2, LineChart, Sparkles } from 'lucide-react';
 import { Chip } from './Chip.jsx';
 import { RECOMMENDATION_CHIP, VERIFIER_CHIP, VERIFIER_LABEL } from '../constants.js';
@@ -65,7 +66,7 @@ const StandbyReport = ({ company, marketMeta }) => (
   </article>
 );
 
-export const ReportPanel = ({ report, verifier, allSources, company, marketMeta }) => (
+export const ReportPanel = memo(({ report, verifier, allSources, company, marketMeta }) => (
   <div className="report-panel">
     <div className="panel-heading">
       <h2>Agent Report</h2>
@@ -93,4 +94,4 @@ export const ReportPanel = ({ report, verifier, allSources, company, marketMeta 
       <StandbyReport company={company} marketMeta={marketMeta} />
     )}
   </div>
-);
+));

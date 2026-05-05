@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   agentDefinitions,
   createCompanyShell,
@@ -62,6 +62,12 @@ export const useAgentWorkflow = (initialSymbol) => {
   const abortRef = useRef(null);
   const logIdRef = useRef(0);
 
+  // Mirror state into a ref so callbacks below (`getStepState`) can stay
+  // referentially stable across renders. Updated synchronously during render
+  // so reads inside the same render cycle see the freshest values.
+  const stepStateRef = useRef({ activeAgents, completedAgents, failedAgents });
+  stepStateRef.current = { activeAgents, completedAgents, failedAgents };
+
   // Cancel any in-flight workflow when the hook unmounts. Without this,
   // navigating away leaves Gemini/Yahoo fetches running and produces React
   // setState-on-unmounted-component warnings.
@@ -92,25 +98,31 @@ export const useAgentWorkflow = (initialSymbol) => {
     }));
   };
 
-  const getStepState = (id) => {
-    if (activeAgents.includes(id)) return 'active';
-    if (completedAgents.includes(id)) return 'done';
-    if (failedAgents.includes(id)) return 'failed';
+  // Stable across renders. Reads from `stepStateRef.current` so panels that
+  // receive `getStepState` as a prop (via React.memo) don't re-render just
+  // because we got a new function identity each render.
+  const getStepState = useCallback((id) => {
+    const { activeAgents: a, completedAgents: c, failedAgents: f } = stepStateRef.current;
+    if (a.includes(id)) return 'active';
+    if (c.includes(id)) return 'done';
+    if (f.includes(id)) return 'failed';
     return '';
-  };
+  }, []);
 
-  const reset = (symbol) => {
+  // No closure deps — only calls setters (stable) and references the
+  // imported pure helper `initialResults`.
+  const reset = useCallback((symbol) => {
     setCompletedAgents([]);
     setFailedAgents([]);
     setLogs([]);
     setError('');
     setResults(initialResults(symbol));
     setActiveAgents([]);
-  };
+  }, []);
 
-  const cancel = () => {
+  const cancel = useCallback(() => {
     abortRef.current?.abort();
-  };
+  }, []);
 
   const validateOrFail = (rawSymbol) => {
     const validation = validateSymbol(rawSymbol);

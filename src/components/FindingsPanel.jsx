@@ -1,7 +1,8 @@
+import { memo } from 'react';
 import { Chip } from './Chip.jsx';
 import { RISK_CHIP } from '../constants.js';
 
-export const FindingsPanel = ({ news, analysis, risk }) => {
+export const FindingsPanel = memo(({ news, analysis, risk }) => {
   const newsHeadlines = news?.news || [];
   const riskRisks = risk?.risks || [];
   const riskOpportunities = risk?.opportunities || [];
@@ -68,4 +69,4 @@ export const FindingsPanel = ({ news, analysis, risk }) => {
       </div>
     </div>
   );
-};
+});

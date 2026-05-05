@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import { Play, RefreshCw, Search, X } from 'lucide-react';
 
-export const CommandStrip = ({
+export const CommandStrip = memo(({
   symbol,
   setSymbol,
   isRunning,
@@ -54,4 +55,4 @@ export const CommandStrip = ({
       </button>
     </div>
   </section>
-);
+));
