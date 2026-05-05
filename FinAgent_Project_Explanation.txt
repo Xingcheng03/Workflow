@@ -1,0 +1,221 @@
+FinAgent Dashboard Project Explanation
+
+Project Overview
+
+Our project is called FinAgent Dashboard. It is an interactive financial analysis dashboard built with JavaScript, React, and Vite. The user can enter a stock ticker such as NVDA, TSLA, AAPL, or another public company symbol. The system then runs a multi-agent finance workflow to collect market data, search recent news, analyze the company, assess risks, and generate an investment brief.
+
+The main goal of this project is not only to show an AI-generated answer. Instead, we make the agent workflow visible and controllable through a dashboard. The user can run each agent individually or click Run Full Analysis to execute the entire workflow.
+
+
+Agents In The System
+
+The system contains five agents:
+
+1. Data Agent
+   Purpose: Fetch verified live market data and price trend.
+
+2. News Agent
+   Purpose: Search and summarize recent company and market news.
+
+3. Analysis Agent
+   Purpose: Analyze valuation, growth, profitability, and trend.
+
+4. Risk Agent
+   Purpose: Identify investment risks and opportunities.
+
+5. Report Agent
+   Purpose: Combine all previous results and generate a final investment brief.
+
+
+Data Agent
+
+The Data Agent is responsible for market data. It does not ask Gemini to guess stock prices. Instead, it calls a real market data source.
+
+Tool:
+- Yahoo Finance Chart API
+- Local Vite proxy endpoint: /api/market-chart/:symbol
+
+The Data Agent fetches:
+- Latest price
+- Price change
+- Day range
+- 52-week range
+- Trading volume
+- Intraday price series
+
+Principle:
+The React frontend calls a local Vite endpoint. The local Vite endpoint then requests Yahoo Finance chart data. This avoids browser CORS problems and gives the dashboard real quote and chart data.
+
+Instruction given to the Data Agent:
+
+For the selected stock symbol, fetch verified live market chart data.
+Extract the latest close price, price change, day range, 52-week range, volume, and intraday close-price series.
+Do not generate or guess market prices.
+
+
+News Agent
+
+The News Agent uses Gemini API with Google Search grounding. It searches recent public information and summarizes news that matters to investors.
+
+Tools:
+- Gemini API
+- Google Search grounding tool
+
+The News Agent produces:
+- Three recent news summaries
+- A sentiment score from 0 to 100
+
+Instruction given to the News Agent:
+
+Research recent news for the selected stock.
+Summarize the most important investor-relevant headlines.
+Return three concise news summaries and a sentiment score from 0 to 100.
+
+
+Analysis Agent
+
+The Analysis Agent uses Gemini to interpret the company and market context. It uses the dashboard context from previous agents, including market data and news summaries.
+
+Skills:
+- Financial ratio analysis
+- Valuation analysis
+- Growth analysis
+- Profitability analysis
+- Trend interpretation
+
+The Analysis Agent analyzes:
+- Whether valuation is high, balanced, or attractive
+- Whether growth is strong or weak
+- Whether profit margin is healthy
+- Whether price trend supports the investment view
+
+Instruction given to the Analysis Agent:
+
+Analyze valuation, growth, profitability, and market trend for the selected stock.
+Use the existing dashboard context when available.
+Return valuation view, growth view, margin view, and a short analysis summary.
+
+
+Risk Agent
+
+The Risk Agent uses Gemini to evaluate risks and opportunities.
+
+Skills:
+- Risk assessment
+- Opportunity identification
+- Scenario analysis
+
+The Risk Agent produces:
+- Risk level: Low, Moderate, Elevated, or High
+- Three major risks
+- Three major opportunities
+
+Instruction given to the Risk Agent:
+
+Assess investment risks and opportunities for the selected stock.
+Consider company-specific risks, market risks, valuation risks, macro risks, and industry risks.
+Return risk level, three risks, and three opportunities.
+
+
+Report Agent
+
+The Report Agent is the final summarization agent. It combines the outputs from the previous agents and generates a short investment brief.
+
+Skills:
+- Investment report writing
+- Financial summarization
+- Decision support
+
+The Report Agent uses:
+- Live market data from Data Agent
+- News and sentiment from News Agent
+- Analysis from Analysis Agent
+- Risks and opportunities from Risk Agent
+
+Instruction given to the Report Agent:
+
+Generate a final investment brief for the selected stock using the dashboard context.
+Include title, recommendation, thesis, and four key bullet points.
+The result should be concise and suitable for a finance dashboard.
+
+
+Complete Workflow
+
+The complete workflow is:
+
+1. User enters a stock ticker.
+2. Data Agent fetches live quote and intraday chart data.
+3. News Agent searches and summarizes recent news.
+4. Analysis Agent analyzes valuation, growth, margin, and trend.
+5. Risk Agent identifies risks and opportunities.
+6. Report Agent generates the final investment brief.
+7. React dashboard visualizes the metrics, workflow state, execution logs, price trend, and final report.
+
+
+Workflow Diagram
+
+User Input
+    |
+    v
+Data Agent
+    |
+    v
+News Agent
+    |
+    v
+Analysis Agent
+    |
+    v
+Risk Agent
+    |
+    v
+Report Agent
+    |
+    v
+Dashboard Output
+
+
+Tools And Skills
+
+Tools used in this project:
+- React
+- Vite
+- JavaScript
+- Gemini API
+- Google Search grounding
+- Yahoo Finance Chart API
+- Local Vite market data proxy
+
+Skills used in this project:
+- Live market data extraction
+- News summarization
+- Financial ratio analysis
+- Valuation analysis
+- Risk assessment
+- Investment report generation
+- Workflow visualization
+
+
+Key Design Principle
+
+The system separates deterministic market data from AI reasoning.
+
+Real market data comes from Yahoo Finance API.
+AI reasoning and writing come from Gemini.
+The interactive user interface is built with React.
+
+This design is important because stock prices and charts should not be generated by an AI model. They should come from a verified data source. Gemini is used for the tasks it is good at: summarization, reasoning, risk analysis, and report writing.
+
+
+Why This Project Is Useful
+
+Traditional financial analysis requires users to manually search stock data, read news, compare metrics, evaluate risks, and write a report. Our dashboard automates this workflow with multiple agents.
+
+The user can see:
+- What each agent is doing
+- Which step is currently running
+- What data has been collected
+- What analysis has been generated
+- What final investment brief the system recommends
+
+This makes the financial workflow more transparent, interactive, and easier to explain in a classroom demo.
